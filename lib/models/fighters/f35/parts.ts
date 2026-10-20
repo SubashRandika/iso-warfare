@@ -1,7 +1,7 @@
 // F-35B part catalogue: names, what each part does on the real aircraft, and what clicking it does here.
 // Plain data so the UI can import it without pulling in three.js.
 
-import type { PartInfo } from '../jets/types';
+import type { PartInfo } from '../../../catalog/types';
 
 export const LIGHTNING_PARTS: PartInfo[] = [
   { id: 'radome', name: 'Radome & sensors', text: 'The nose carries the AN/APG-81 active electronically scanned radar. Under the chin sits the faceted window of the electro-optical targeting system, and six infrared cameras around the airframe give the pilot a view straight through the jet.' },

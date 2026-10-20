@@ -1,5 +1,5 @@
-import JetViewer from '@/components/JetViewer';
+import Viewer from '@/components/Viewer';
 
 export default function Page() {
-  return <JetViewer />;
+  return <Viewer />;
 }

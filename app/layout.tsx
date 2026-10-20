@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from 'next';
+import { Big_Shoulders_Stencil } from 'next/font/google';
 import './globals.css';
+
+// stencil face for designations only (F-22, M17): the marking language of crates, hulls and airframes
+const stencil = Big_Shoulders_Stencil({ weight: ['600', '800'], subsets: ['latin'], variable: '--stencil', display: 'swap', fallback: ['Impact', 'Arial Narrow', 'sans-serif'] });
 
 export const metadata: Metadata = {
   title: 'Iso Warfare',
-  description: 'Interactive isometric 3D fighter jets (F-22 Raptor, F-35B Lightning II) in the iso-glow hairline style.',
+  description: 'An armory of interactive isometric 3D military hardware (fighter jets, small arms and more) in the iso-glow hairline style.',
 };
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
@@ -13,7 +17,7 @@ const themeScript = `try{var t=localStorage.getItem('iso-warfare-theme')||(match
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={stencil.variable} suppressHydrationWarning>
       <head suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

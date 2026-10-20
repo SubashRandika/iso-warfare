@@ -1,10 +1,10 @@
 // F-35B Lightning II airframe (the STOVL version), built from faceted lofts and aerofoil slabs in metres.
 // Axes: +y up, +z forward. `s` is the distance aft of the nose tip. Side k = +1 is port (+x), k = −1 starboard.
 import * as THREE from 'three';
-import type { Engine } from '../iso/engine';
-import { Geo, loft, slab, merge } from '../iso/geo';
+import type { Engine } from '../../../iso/engine';
+import { Geo, loft, slab, merge } from '../../../iso/geo';
 import { makeKit, DEG, SIDES, PLATE, ease, clamp01, phase } from '../jet/kit';
-import { buildApron } from '../jet/apron';
+import { buildApron } from '../../../stages/apron';
 import type { Hinge, JetRig, JetState } from '../jet/types';
 
 type V = THREE.Vector3;

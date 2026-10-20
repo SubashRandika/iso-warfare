@@ -8,6 +8,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import type { Pass } from 'three/addons/postprocessing/Pass.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
@@ -57,6 +58,7 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = persp;
   const controls = new OrbitControls(camera as THREE.Camera, renderer.domElement);
   controls.enableDamping = true;
+  controls.zoomToCursor = true;                       // scroll toward what is under the pointer (cockpits, bays)
   controls.maxPolarAngle = Math.PI * 0.495;
   controls.minDistance = 6;
   controls.maxDistance = 160;
@@ -283,7 +285,7 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   function accentFill(root: THREE.Object3D) {
     root.traverse(o => {
       const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-      if (!m || !(m as THREE.MeshStandardMaterial).isMeshStandardMaterial || accentFilled.has(m) || m.emissive.getHex() === 0) return;
+      if (!m || !(m as THREE.MeshStandardMaterial).isMeshStandardMaterial || accentFilled.has(m) || m.emissive.getHex() === 0 || m.userData.realStyle) return;
       accentFilled.add(m);
       m.onBeforeCompile = sh => {
         sh.uniforms.uAccentFill = accentFillU; sh.uniforms.uAccentC = { value: accent };
@@ -376,6 +378,10 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   function setView(v: ViewSpec) {
     view = v;
     controls.minDistance = v.min ?? 6; controls.maxDistance = v.max ?? 160;
+    // clip planes follow the model's size, so a pistol and a warship both keep depth precision
+    const d = v.dist();
+    persp.near = ortho.near = Math.max(0.002, d * 0.004); persp.far = ortho.far = d * 20;
+    persp.updateProjectionMatrix(); ortho.updateProjectionMatrix();
     controls.target.copy(v.target);
     camera.position.copy(v.target).addScaledVector(v.dir, v.dist());
     if (camera === ortho) { orthoH = v.dist() * fovK(); ortho.zoom = 1; orthoFrustum(); }
@@ -462,7 +468,14 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   }
 
   return {
-    scene, renderer, controls,
+    scene, renderer, controls, composer,
+    /** the scene lights, for render styles that relight it (lib/real) */
+    lights: { hemi, ambient, sun, fill },
+    /** line and outline materials a selected part wears */
+    accentLineMats: new Set<THREE.Material>([accentLineMat, accentMinorMat, outlineAccentMat]),
+    get camera() { return camera; },
+    /** add a post pass before tone mapping (bloom and the like) */
+    addPreOutputPass(p: Pass) { composer.insertPass(p, 1); },
     mats: { body: bodyMat, recess: recessMat, pad: padMat, glass: glassMat, line: lineMat, major: majorMat },
     glowMat, glowPoints, softMat, fat, loopLine, hairline, highlight, screenMats, accentLights,
     accent, themeHooks, shadowStrength,

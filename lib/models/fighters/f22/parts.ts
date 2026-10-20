@@ -1,7 +1,7 @@
 // F-22 part catalogue: names, what each part does on the real aircraft, and what clicking it does here.
 // Plain data so the UI can import it without pulling in three.js.
 
-import type { PartInfo } from '../jets/types';
+import type { PartInfo } from '../../../catalog/types';
 
 export const RAPTOR_PARTS: PartInfo[] = [
   { id: 'radome', name: 'Radome & chines', text: 'The nose houses the AN/APG-77 active electronically scanned radar, which steers its beam electronically with about two thousand transmit/receive modules and no moving dish. The sharp chine starts at the nose tip and runs aft into the intakes and the wing leading edge.' },

@@ -1,47 +1,40 @@
-// Every jet in the hangar: what the UI lists and what the controller allows. Plain data (no three.js).
-import type { JetDef, JetId } from './types';
-import { RAPTOR_PARTS } from '../raptor/parts';
-import { LIGHTNING_PARTS } from '../lightning/parts';
+// Every model in the armory. Plain data (no three.js): a model's code loads only when it is opened.
+// To add one, create lib/models/<category>/<id>/{def.ts, model.ts} and list its def below (see CLAUDE.md).
+import type { Category, CategoryId, ModelDef } from './types';
+import { CATEGORIES, DOMAINS } from './categories';
+import { f22 } from '../models/fighters/f22/def';
+import { f35 } from '../models/fighters/f35/def';
+import { m17 } from '../models/pistols/m17/def';
 
-const WIGGLES = { lef: 'wiggle:lef', flaperons: 'wiggle:flaperons', stabs: 'wiggle:stabs', rudders: 'wiggle:rudders', fins: 'wiggle:rudders' } as const;
+export const MODELS: ModelDef[] = [f22, f35, m17];
 
-export const JETS: Record<JetId, JetDef> = {
-  f22: {
-    id: 'f22', name: 'F-22 Raptor', tab: 'F-22 Raptor',
-    specs: [['Length', '18.9 m'], ['Span', '13.6 m'], ['Height', '5.1 m'], ['Engines', '2 × F119']],
-    intro: { title: 'F-22 Raptor', text: 'Click any part to see what it does; parts that move will move. Drag to orbit, scroll to zoom, right-drag to pan. Start the engines, close the canopy and take off, or run the demo.' },
-    parts: RAPTOR_PARTS,
-    actions: [
-      { id: 'demo', label: 'Demo', key: '▶' }, { id: 'engines', label: 'Engines', key: 'E' }, { id: 'afterburner', label: 'Afterburner', key: 'A' },
-      { id: 'lights', label: 'Lights', key: 'L' }, { id: 'canopy', label: 'Canopy', key: 'C' }, { id: 'gear', label: 'Take off / land', key: 'G' },
-      { id: 'bays', label: 'Weapons bays', key: 'B' }, { id: 'brake', label: 'Speed brake', key: 'S' }, { id: 'refuel', label: 'Refuel door', key: 'R' },
-      { id: 'check', label: 'Control check', key: 'K' },
-    ],
-    partActions: {
-      canopy: 'canopy', intakes: 'engines', nozzles: 'afterburner', gearNose: 'gear', gearMain: 'gear',
-      bayMain: 'bayMain', baySide: 'baySide', refuel: 'refuel', lights: 'lights', ailerons: 'wiggle:ailerons', ...WIGGLES,
-    },
-    hint: '↑↓ pitch · ←→ roll · Z X yaw · E engines · G take off · I iso · T theme',
-    refuelReadout: 'receptacle open',
-  },
-  f35: {
-    id: 'f35', name: 'F-35B Lightning II', tab: 'F-35 Lightning II',
-    specs: [['Length', '15.6 m'], ['Span', '10.7 m'], ['Height', '4.4 m'], ['Engine', '1 × F135']],
-    intro: { title: 'F-35B Lightning II', text: 'The STOVL version. Click any part to see what it does; parts that move will move. Start the engine, close the canopy, convert to STOVL (V) and lift off into the hover, or take off conventionally. Or run the demo.' },
-    parts: LIGHTNING_PARTS,
-    actions: [
-      { id: 'demo', label: 'Demo', key: '▶' }, { id: 'engines', label: 'Engine', key: 'E' }, { id: 'afterburner', label: 'Afterburner', key: 'A' },
-      { id: 'lights', label: 'Lights', key: 'L' }, { id: 'canopy', label: 'Canopy', key: 'C' }, { id: 'stovl', label: 'STOVL mode', key: 'V' },
-      { id: 'gear', label: 'Take off / hover', key: 'G' }, { id: 'bays', label: 'Weapons bays', key: 'B' }, { id: 'brake', label: 'Speed brake', key: 'S' },
-      { id: 'refuel', label: 'Refuel probe', key: 'R' }, { id: 'check', label: 'Control check', key: 'K' },
-    ],
-    partActions: {
-      canopy: 'canopy', intakes: 'engines', nozzle: 'stovl', liftFan: 'stovl', rollPosts: 'stovl', gearNose: 'gear', gearMain: 'gear',
-      bayMain: 'bays', refuel: 'refuel', lights: 'lights', ...WIGGLES,
-    },
-    hint: '↑↓ pitch · ←→ roll · Z X yaw · V STOVL · G take off / hover · I iso · T theme',
-    refuelReadout: 'probe out',
-  },
-};
+export { CATEGORIES, DOMAINS };
+export const DEFAULT_MODEL = 'f22';
 
-export const JET_IDS = Object.keys(JETS) as JetId[];
+const byId = new Map(MODELS.map(m => [m.id, m]));
+export const getModel = (id: string | null | undefined) => (id && byId.get(id)) || byId.get(DEFAULT_MODEL)!;
+export const hasModel = (id: string | null | undefined) => !!id && byId.has(id);
+export const modelsIn = (c: CategoryId) => MODELS.filter(m => m.category === c);
+export const categoryOf = (m: ModelDef): Category => CATEGORIES.find(c => c.id === m.category)!;
+/** categories that have at least one model, in shelf order */
+export const stockedCategories = () => CATEGORIES.filter(c => MODELS.some(m => m.category === c.id));
+
+// keys the host keeps for itself: iso view, theme, sound, the Line / Real switch, and armory navigation
+export const RESERVED_KEYS = ['i', 't', 'm', 'h', 'escape', '[', ']', '/'];
+
+if (process.env.NODE_ENV !== 'production') {
+  const seen = new Set<string>();
+  for (const m of MODELS) {
+    if (seen.has(m.id)) console.warn(`[catalog] duplicate model id "${m.id}"`);
+    seen.add(m.id);
+    if (!CATEGORIES.some(c => c.id === m.category)) console.warn(`[catalog] ${m.id}: unknown category "${m.category}"`);
+    const keys = new Set<string>();
+    for (const a of m.actions) {
+      const k = a.key.toLowerCase();
+      if (RESERVED_KEYS.includes(k)) console.warn(`[catalog] ${m.id}: action "${a.id}" uses reserved key ${a.key}`);
+      if (keys.has(k)) console.warn(`[catalog] ${m.id}: key ${a.key} bound twice`);
+      keys.add(k);
+    }
+    for (const [p, a] of Object.entries(m.partActions)) if (!m.parts.some(x => x.id === p)) console.warn(`[catalog] ${m.id}: partActions names unknown part "${p}" (→ ${a})`);
+  }
+}
