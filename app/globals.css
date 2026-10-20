@@ -1,0 +1,96 @@
+:root {
+  color-scheme: dark;
+  --bg: #121314;
+  --panel: rgba(22, 23, 24, 0.86);
+  --line: #26292b;
+  --ink: #c9d0db;
+  --dim: #7d8796;
+  --accent: #22d3ee;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #e9eaea;
+  --panel: rgba(246, 246, 245, 0.9);
+  --line: #d6d8d8;
+  --ink: #2b2e30;
+  --dim: #6b7075;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 12px/1.45 var(--mono); overflow: hidden; }
+button { font: inherit; color: inherit; }
+
+.stage { position: fixed; inset: 0; }
+.stage canvas { display: block; touch-action: none; }
+
+.ui { position: fixed; z-index: 2; }
+
+/* top bar */
+.top { top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; pointer-events: none; }
+.top > * { pointer-events: auto; }
+.brand { display: flex; align-items: center; gap: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; white-space: nowrap; }
+.brand .mark { width: 22px; height: 22px; display: grid; place-items: center; color: var(--ink); }
+.brand b { font-weight: 600; }
+.brand .sub { color: var(--dim); }
+.specs { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+.specs span { padding: 4px 11px; border-radius: 999px; color: var(--dim); font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }
+.specs span em { font-style: normal; color: var(--ink); margin-left: 6px; }
+.tools { display: flex; gap: 8px; align-items: center; }
+
+.swatches { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+.swatches button { all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
+.swatches button i { width: 10px; height: 10px; border-radius: 50%; background: var(--sw); transition: transform 0.2s; }
+.swatches button:hover i { transform: scale(1.18); }
+.swatches button[aria-checked="true"] { box-shadow: 0 0 0 1px var(--sw) inset; }
+.swatches button:focus-visible { outline: 1px solid var(--ink); }
+
+.pill { all: unset; cursor: pointer; height: 28px; padding: 0 11px 0 9px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--dim); font-size: 13px; }
+.pill span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.pill:hover { border-color: var(--dim); color: var(--ink); }
+.pill[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.pill:focus-visible, .round:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+.round { all: unset; cursor: pointer; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 14px; }
+.round:hover { border-color: var(--dim); }
+
+/* left: parts list */
+.parts { top: 64px; left: 16px; width: 196px; max-height: calc(100vh - 290px); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; scrollbar-width: none; }
+.parts::-webkit-scrollbar { display: none; }
+.parts h3 { margin: 0 0 2px; padding-left: 2px; font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+.parts button { all: unset; cursor: pointer; display: flex; gap: 10px; align-items: baseline; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.parts button i { font-style: normal; color: var(--dim); font-size: 10px; }
+.parts button:hover { border-color: var(--dim); }
+.parts button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.parts button[aria-pressed="true"] i { color: var(--accent); }
+.parts button:focus-visible { outline: 1px solid var(--ink); outline-offset: 1px; }
+
+/* right: actions */
+.ctl { top: 64px; right: 16px; width: 182px; display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 140px); overflow-y: auto; scrollbar-width: none; }
+.ctl button { all: unset; cursor: pointer; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); display: flex; justify-content: space-between; color: var(--dim); }
+.ctl button:hover { color: var(--ink); }
+.ctl button.on { color: var(--ink); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.ctl button kbd { font: inherit; opacity: 0.7; }
+.ctl button:focus-visible { outline: 1px solid var(--ink); outline-offset: 1px; }
+.ctl .sep { height: 6px; flex: none; }
+
+/* bottom */
+.info { left: 16px; bottom: 16px; width: min(420px, calc(100vw - 32px)); padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.info h2 { margin: 0 0 4px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.info p { margin: 0; }
+.info .act { margin-top: 8px; color: var(--dim); }
+.info .act b { color: var(--ink); font-weight: 500; }
+.hint { left: 452px; bottom: 16px; right: 360px; color: var(--dim); font-size: 11px; }
+.read { right: 16px; bottom: 16px; text-align: right; max-width: 60vw; }
+.credit { right: 16px; bottom: 36px; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); text-decoration: none; }
+.credit:hover { color: var(--ink); }
+
+@media (max-width: 1280px) { .specs { display: none; } .hint { display: none; } }
+@media (max-width: 900px) {
+  .parts { display: none; }
+  .brand .sub { display: none; }
+  .ctl { top: 60px; width: 150px; max-height: 44vh; }
+  .info { bottom: 56px; width: calc(100vw - 32px); }
+  .credit { display: none; }
+  .read { left: 16px; right: 16px; max-width: none; text-align: left; }
+}
+@media (max-width: 520px) { .swatches { display: none; } }
