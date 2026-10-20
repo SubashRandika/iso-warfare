@@ -1,13 +1,9 @@
-// Part catalogue: names, what each part does on the real aircraft, and what clicking it does here.
+// F-22 part catalogue: names, what each part does on the real aircraft, and what clicking it does here.
 // Plain data so the UI can import it without pulling in three.js.
 
-export type PartId =
-  | 'radome' | 'canopy' | 'intakes' | 'wings' | 'lef' | 'flaperons' | 'ailerons' | 'fins' | 'rudders'
-  | 'stabs' | 'nozzles' | 'gearNose' | 'gearMain' | 'bayMain' | 'baySide' | 'refuel' | 'lights' | 'airframe';
+import type { PartInfo } from '../jets/types';
 
-export interface PartInfo { id: PartId; name: string; text: string; click?: string }
-
-export const PARTS: PartInfo[] = [
+export const RAPTOR_PARTS: PartInfo[] = [
   { id: 'radome', name: 'Radome & chines', text: 'The nose houses the AN/APG-77 active electronically scanned radar, which steers its beam electronically with about two thousand transmit/receive modules and no moving dish. The sharp chine starts at the nose tip and runs aft into the intakes and the wing leading edge.' },
   { id: 'canopy', name: 'Canopy & cockpit', click: 'opens or closes the canopy', text: 'A single-piece bubble canopy with no forward bow frame, hinged at the rear. Its metallised coating keeps radar energy out of the cockpit, which gives the real canopy its gold tint. Inside: an ejection seat, a wide-angle head-up display and large colour displays that light up when the jet has power.' },
   { id: 'intakes', name: 'Caret intakes', click: 'starts or stops the engines', text: 'Fixed, swept caret inlets on either side of the cockpit. The ducts curve inward and upward behind them so the engine faces cannot be seen from the front, one of the largest single reductions in the jet’s radar signature.' },
@@ -27,19 +23,3 @@ export const PARTS: PartInfo[] = [
   { id: 'lights', name: 'Formation & nav lights', click: 'switches the lights', text: 'Electroluminescent formation strips on the nose, wingtips, tails and aft fuselage for night formation flying, position lights at the wingtips and flashing anti-collision beacons above and below.' },
   { id: 'airframe', name: 'Airframe', text: 'Single-seat, twin-engine air-superiority fighter. 18.9 m long, 13.6 m span, 5.1 m tall. A faceted, blended shape with aligned edges and internal weapons keeps its radar cross-section very small.' },
 ];
-
-export const PART = Object.fromEntries(PARTS.map(p => [p.id, p])) as Record<PartId, PartInfo>;
-
-export const ACTIONS = [
-  { id: 'demo', label: 'Demo', key: '▶' },
-  { id: 'engines', label: 'Engines', key: 'E' },
-  { id: 'afterburner', label: 'Afterburner', key: 'A' },
-  { id: 'lights', label: 'Lights', key: 'L' },
-  { id: 'canopy', label: 'Canopy', key: 'C' },
-  { id: 'gear', label: 'Take off / land', key: 'G' },
-  { id: 'bays', label: 'Weapons bays', key: 'B' },
-  { id: 'brake', label: 'Speed brake', key: 'S' },
-  { id: 'refuel', label: 'Refuel door', key: 'R' },
-  { id: 'check', label: 'Control check', key: 'K' },
-] as const;
-export type ActionId = (typeof ACTIONS)[number]['id'];

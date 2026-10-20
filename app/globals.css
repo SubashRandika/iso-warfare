@@ -32,7 +32,12 @@ button { font: inherit; color: inherit; }
 .brand { display: flex; align-items: center; gap: 10px; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; white-space: nowrap; }
 .brand .mark { width: 22px; height: 22px; display: grid; place-items: center; color: var(--ink); }
 .brand b { font-weight: 600; }
-.brand .sub { color: var(--dim); }
+.lead { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.seg { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+.seg button { all: unset; flex: none; white-space: nowrap; cursor: pointer; padding: 5px 12px; border-radius: 999px; color: var(--dim); font-size: 11px; letter-spacing: 0.06em; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-selected="true"] { color: var(--ink); background: var(--bg); box-shadow: 0 0 0 1px var(--accent) inset; }
+.seg button:focus-visible { outline: 1px solid var(--ink); outline-offset: 1px; }
 .specs { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
 .specs span { padding: 4px 11px; border-radius: 999px; color: var(--dim); font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }
 .specs span em { font-style: normal; color: var(--ink); margin-left: 6px; }
@@ -84,10 +89,11 @@ button { font: inherit; color: inherit; }
 .credit { right: 16px; bottom: 36px; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); text-decoration: none; }
 .credit:hover { color: var(--ink); }
 
-@media (max-width: 1280px) { .specs { display: none; } .hint { display: none; } }
+@media (max-width: 1440px) { .specs { display: none; } }
+@media (max-width: 1280px) { .hint { display: none; } }
 @media (max-width: 900px) {
   .parts { display: none; }
-  .brand .sub { display: none; }
+  .brand b { display: none; }
   .ctl { top: 60px; width: 150px; max-height: 44vh; }
   .info { bottom: 56px; width: calc(100vw - 32px); }
   .credit { display: none; }

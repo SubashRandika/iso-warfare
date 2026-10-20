@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'F-22 Raptor · Iso Warfare',
-  description: 'An interactive isometric 3D F-22 Raptor in the iso-glow hairline style.',
+  title: 'Iso Warfare',
+  description: 'Interactive isometric 3D fighter jets (F-22 Raptor, F-35B Lightning II) in the iso-glow hairline style.',
 };
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
