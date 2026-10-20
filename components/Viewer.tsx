@@ -73,6 +73,13 @@ export default function Viewer() {
   const pick = (p: string) => (e: MouseEvent<HTMLButtonElement>) => { api.current?.select(snap?.selected === p ? null : p); e.currentTarget.blur(); };
   const view = (c: ViewCommand) => run(c);
   const sel = snap?.selected ? def.parts.find(p => p.id === snap.selected) ?? null : null;
+  // hint segments as keycaps + label: 'Z X yaw' → keys [Z, X], label 'yaw'
+  const hint = `${def.hint}${snap?.style ? ' · H real view' : ''} · / armory`.split(' · ').map(seg => {
+    const t = seg.split(' '); let i = 0;
+    while (i < t.length - 1 && t[i].length <= 2) i++;
+    return { keys: t.slice(0, i), label: t.slice(i).join(' ') };
+  });
+  const status = failed ? [`${def.name} failed to load`, 'reload the page to retry'] : snap ? snap.readout.split(' · ') : ['loading'];
 
   return (
     <>
@@ -151,9 +158,11 @@ export default function Viewer() {
         <p>{sel ? sel.text : def.intro.text}</p>
         {sel?.click && <p className="act">Click it on the {cat.one}: <b>{sel.click}</b></p>}
       </section>
-      <div className="ui hint">{def.hint}{snap?.style ? ' · H real view' : ''} · / armory</div>
+      <ul className="ui hint" aria-label="Keyboard shortcuts">
+        {hint.map(h => <li key={h.label}>{h.keys.map(k => <kbd key={k}>{k}</kbd>)}<span>{h.label}</span></li>)}
+      </ul>
       <a className="ui credit" href="https://iso-glow.vercel.app" target="_blank" rel="noopener noreferrer">Made with ISO-GLOW ↗</a>
-      <div className="ui read" aria-live="off">{failed ? `${def.name} failed to load · reload the page to retry` : snap ? snap.readout : 'loading'}</div>
+      <div className="ui read" aria-live="off" role="status">{status.map((s, i) => <span key={i}>{s}</span>)}</div>
     </>
   );
 }
