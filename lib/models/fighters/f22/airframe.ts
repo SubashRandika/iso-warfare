@@ -174,7 +174,8 @@ export function buildRaptor(E: Engine): JetRig {
     const curve = new THREE.CatmullRomCurve3(span(T0 - 0.35, S1 - 0.2, 24).map(s => sill(k, s, 0.004)));
     cockpitMesh(new THREE.TubeGeometry(curve, 72, 0.013, 8), CM.rubber, ckpt);
   }
-  const seat = ejectionSeat(CM); seat.position.copy(P(0, 2.2, 6.02)); ckpt.add(seat);
+  // ACES II proportions: about 0.95 m from cushion to headrest top, so the head box clears the closed canopy
+  const seat = ejectionSeat(CM); seat.scale.setScalar(0.84); seat.position.copy(P(0, 2.18, 6.0)); ckpt.add(seat);
   const panel = instrumentPanel(CM, screen.tex); panel.position.copy(P(0, 2.47, 4.74)); panel.rotation.x = 15 * DEG; ckpt.add(panel);
   const shield = glareshield(CM, 0.8, 0.34); shield.position.copy(P(0, 2.79, 4.66)); ckpt.add(shield);
   const hudSet = hud(CM); hudSet.group.position.copy(P(0, 2.845, 4.6)); ckpt.add(hudSet.group);
