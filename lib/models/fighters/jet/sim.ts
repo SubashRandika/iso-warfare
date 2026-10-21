@@ -44,7 +44,10 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       },
       afterburner() {
         if (!st.eng) return say(`start ${engWord} first`);
-        if (st.stovl) return say('no afterburner in stovl');
+        if (st.stovl) {                               // the swivel nozzle must point aft: convert back, then light it
+          if (airborne()) return say('no afterburner in the hover');
+          act.stovl(); st.ab = true; return say('converting back for afterburner');
+        }
         st.ab = !st.ab; snd.button();
       },
       lights() { st.lights = !st.lights; snd.button(); },
@@ -157,21 +160,24 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
     E.themeHooks.push(() => drawScreen(true));
     drawScreen(true);
 
-    // ── realistic style: afterburner plumes, their light, and heat in the nozzles ──
+    // ── realistic style: hot exhaust whenever the engines run, afterburner plumes, their light, heat in the nozzles ──
+    // Plumes are children of the nozzle parts, so a vectoring or swivelling nozzle (the F-35B's) turns them with it.
     let real: RealSpec | undefined;
     if (R.real) {
-      const X = R.real;
-      const plumes = X.nozzles.map((n, i) => makePlume(n.parent, n.at, new THREE.Vector3(0, 0, -1), n.w, n.h, 10, i));
+      const X = R.real, aft = new THREE.Vector3(0, 0, -1);
+      const plumes = X.nozzles.map((n, i) => makePlume(n.parent, n.at, aft, n.w, n.h, 10, i));
+      const dry = X.nozzles.map((n, i) => makePlume(n.parent, n.at, aft, n.w * 0.92, n.h * 0.92, 5, i + 5, 'dry'));
       const mid = X.nozzles.reduce((a, n) => a.add(n.at), new THREE.Vector3()).divideScalar(X.nozzles.length);
       const abLight = new THREE.PointLight(0xff7a2e, 0, 0, 2); abLight.position.copy(mid).add(new THREE.Vector3(0, -0.2, -2.2));
       X.nozzles[0].parent.add(abLight);
       real = {
         skin: X.skin, focus: X.focus, size: X.size, markings: { stopZ: X.stopZ }, hide: R.stage ? [R.stage] : [], only: X.only,
         lamps: [[L.stripMat, 'slime'], [L.navMat, 'nav'], [L.beaconMat, 'red'], [L.taxiMat, 'white']],
-        onStyle(on) { if (!on) { plumes.forEach(p => p.set(0, 0)); abLight.intensity = 0; } },
+        onStyle(on) { if (!on) { plumes.forEach(p => p.set(0, 0)); dry.forEach(p => p.set(0, 0)); abLight.intensity = 0; } },
         tick(now, mats) {
           const ab = st.abT * clamp01((st.rpm - 0.8) / 0.2);
           plumes.forEach(p => p.set(ab, now));
+          dry.forEach(p => p.set(clamp01((st.rpm - 0.25) / 0.75) * (1 - 0.6 * ab), now));
           abLight.intensity = ab * 60 * (0.9 + 0.1 * Math.sin(now * 0.06));
           mats.exhaust.emissiveIntensity = st.rpm * 0.5 + ab * 5;
           X.power?.(st.rpm > 0.04 || st.lights ? 1 : 0);
@@ -182,7 +188,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
     // ── per-frame ──
     function tick(now: number, dt: number) {
       st.rpm = st.eng ? Math.min(1, st.rpm + 0.22 * dt) : Math.max(0, st.rpm - 0.12 * dt);
-      st.abT = approach(st.abT, st.ab && st.rpm > 0.85 ? 1 : 0, 1.5 * dt);
+      st.abT = approach(st.abT, st.ab && st.rpm > 0.85 && st.stovlT < 0.05 ? 1 : 0, 1.5 * dt);
       st.canopyT = approach(st.canopyT, st.canopy ? 1 : 0, 0.42 * dt);
       st.bayMainT = approach(st.bayMainT, st.bayMain ? 1 : 0, 0.7 * dt);
       st.baySideT = approach(st.baySideT, st.baySide ? 1 : 0, 0.7 * dt);

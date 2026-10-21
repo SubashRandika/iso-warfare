@@ -6,6 +6,7 @@ import { Geo, loft, slab, merge } from '../../../iso/geo';
 import { makeKit, DEG, SIDES, PLATE, ease, clamp01, phase } from '../jet/kit';
 import { buildApron } from '../../../stages/apron';
 import type { Hinge, JetRig, JetState } from '../jet/types';
+import { cockpitMaterials, cockpitMesh, consoleBox, ejectionSeat, glareshield, panoramicPanel, sideStick, throttles } from '../jet/cockpit';
 
 type V = THREE.Vector3;
 const NOSE_Z = 7.8;
@@ -88,7 +89,7 @@ export function buildLightning(E: Engine): JetRig {
 
   // ═════ airframe: fuselage and tail booms ═════
   const pAir = part('airframe');
-  add(pAir, loft(stations(2.8, 14.4).map(fusRing), { capEnd: true }).build());
+  const fuseLine = add(pAir, loft(stations(2.8, 14.4).map(fusRing), { capEnd: true }).build());
   for (const k of SIDES) {
     const c = k * 1.08, ring = (s: number, hw: number, hh: number) => [P(c, SY + hh, s), P(c + hw, SY, s), P(c, SY - hh, s), P(c - hw, SY, s)];
     add(pAir, loft([ring(12.4, 0.02, 0.02), ring(13.2, 0.14, 0.18), ring(15.2, 0.14, 0.16), ring(15.6, 0.04, 0.05)], { capStart: true, capEnd: true }).build());
@@ -102,7 +103,7 @@ export function buildLightning(E: Engine): JetRig {
   // ═════ radome & chin sensor window ═════
   const pNose = part('radome');
   add(pNose, loft(stations(0, 2.8).map(fusRing)).build());
-  { const eots = new THREE.ConeGeometry(0.13, 0.11, 8, 1, false, Math.PI / 8); eots.rotateX(Math.PI); const c = P(0, bellyY(1.9) - 0.035, 1.9); eots.translate(c.x, c.y, c.z); add(pNose, eots); }
+  { const eots = new THREE.ConeGeometry(0.13, 0.11, 8, 1, false, Math.PI / 8); eots.rotateX(Math.PI); const c = P(0, bellyY(1.9) - 0.035, 1.9); eots.translate(c.x, c.y, c.z); add(pNose, eots, undefined, { real: 'seeker' }); }
 
   // ═════ canopy (hinged at the front) & cockpit ═════
   const pCan = part('canopy');
@@ -113,15 +114,67 @@ export function buildLightning(E: Engine): JetRig {
   const canS = Array.from({ length: 21 }, (_, i) => 2.9 + (6.35 - 2.9) * i / 20);
   const canopyH = hinge(pCan, P(0, topY(2.85), 2.85), X, 'x');
   add(canopyH.inner, loft(canS.map(canRing), { open: true, capEnd: true }).build(), glass, { outline: false }).renderOrder = 3;
-  canopyH.inner.add(E.loopLine(canS.map(s => canRing(s)[0]).concat(canS.slice().reverse().map(s => canRing(s)[NA])).map(p => p.add(new THREE.Vector3(0, 0.008, 0))), E.mats.major));   // frame rail
+  const rail = canS.map(s => canRing(s)[0]).concat(canS.slice().reverse().map(s => canRing(s)[NA]));
+  canopyH.inner.add(E.loopLine(rail.map(p => p.clone().add(new THREE.Vector3(0, 0.008, 0))), E.mats.major));   // frame rail
+  const canFrame = add(canopyH.inner, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rail, true), 180, 0.022, 6, true), undefined, { lines: false, outline: false });
   const tub = new Geo();
   const tubRings = Array.from({ length: 11 }, (_, i) => { const s = 3.4 + 2.7 * i / 10, w = canAt(s).w * 0.94; return [P(-w, topY(s, w) + 0.012, s), P(0, topY(s) + 0.012, s), P(w, topY(s, w) + 0.012, s)]; });
   for (let i = 0; i < tubRings.length - 1; i++) for (let j = 0; j < 2; j++) tub.quad(tubRings[i][j], tubRings[i][j + 1], tubRings[i + 1][j + 1], tubRings[i + 1][j], P(0, 0, 4.7));
-  add(pCan, tub.build(), recess, { outline: false });
-  add(pCan, merge([box(-0.23, 0.23, topY(5.1), 2.98, 4.85, 5.35), box(-0.16, 0.16, 2.98, 3.07, 5.1, 5.35)]));
-  add(pCan, box(-0.26, 0.26, topY(3.75), 2.74, 3.55, 3.95));
+  const lineCockpit = [
+    add(pCan, tub.build(), recess, { outline: false }),
+    add(pCan, merge([box(-0.23, 0.23, topY(5.1), 2.98, 4.85, 5.35), box(-0.16, 0.16, 2.98, 3.07, 5.1, 5.35)])),
+    add(pCan, box(-0.26, 0.26, topY(3.75), 2.74, 3.55, 3.95)),
+  ];
   // one panoramic display, no head-up display (the helmet does that job)
-  const { screen, cockpitLight } = K.cockpitDisplay(pCan, P(0, 2.71, 3.98), new THREE.Vector3(0, 0.7, -0.7), 0.48, 0.17, P(0, 2.9, 4.4));
+  const { screen, cockpitLight, mesh: screenMesh } = K.cockpitDisplay(pCan, P(0, 2.71, 3.98), new THREE.Vector3(0, 0.7, -0.7), 0.48, 0.17, P(0, 2.9, 4.4));
+
+  // ── Real view only: a true cockpit opening under the canopy, with a tub and real furniture (as on the F-22) ──
+  const S0 = 3.0, S1 = 6.3, T0 = 3.7, T1 = 5.75, YF = 1.8;
+  const hw = (s: number) => s <= S0 || s >= S1 ? 0 : 0.9 * canAt(s).w * Math.pow(Math.sin(Math.PI * (s - S0) / (S1 - S0)), 0.25);
+  const ring11 = (s: number) => {
+    const f = fus(s), h = hw(s);
+    return [P(h, topY(s, h), s), P(f.wU, f.yU, s), P(f.wC, f.yC, s), P(f.wL, f.yL, s), P(f.wB, f.yB, s), P(0, f.yB, s),
+      P(-f.wB, f.yB, s), P(-f.wL, f.yL, s), P(-f.wC, f.yC, s), P(-f.wU, f.yU, s), P(-h, topY(s, h), s)];
+  };
+  const span = (a: number, b: number, n: number) => Array.from({ length: n + 1 }, (_, i) => a + (b - a) * i / n);
+  const cutSkin = new Geo();
+  loft([2.8, S0].map(ring11), { into: cutSkin });
+  loft(span(S0, S1, 24).map(ring11), { open: true, into: cutSkin });
+  loft([S1, ...stations(S1 + 0.01, 14.4)].map(ring11), { capEnd: true, into: cutSkin });
+  const fuseReal = add(pAir, cutSkin.build(), undefined, { lines: false });
+  const ckpt = new THREE.Group(); pCan.add(ckpt);
+  const CM = cockpitMaterials();
+  const sill = (k: number, s: number, dy = -0.006) => P(k * hw(s), topY(s, hw(s)) + dy, s);
+  const floorPt = (k: number, s: number) => P(k * hw(s) * 0.94, YF, s);
+  { // tub: side walls, floor, front wall behind the panel, bulkhead behind the seat
+    const g = new Geo(), ref = P(0, 2.2, 4.7), ts = span(T0, T1, 14);
+    for (let i = 0; i < ts.length - 1; i++) {
+      const a = ts[i], b = ts[i + 1];
+      for (const k of SIDES) g.quad(sill(k, a), sill(k, b), floorPt(k, b), floorPt(k, a), ref);
+      g.quad(floorPt(1, a), floorPt(1, b), floorPt(-1, b), floorPt(-1, a), ref);
+    }
+    for (const s of [T0, T1]) g.quad(sill(1, s), sill(-1, s), floorPt(-1, s), floorPt(1, s), ref);
+    cockpitMesh(g.build(), CM.tub, ckpt);
+  }
+  const deck = (a: number, b: number, m: THREE.Material) => {        // flush covers fore and aft of the tub
+    const g = new Geo(), ss = span(a, b, 12);
+    for (let i = 0; i < ss.length - 1; i++) g.quad(sill(1, ss[i], -0.004), sill(1, ss[i + 1], -0.004), sill(-1, ss[i + 1], -0.004), sill(-1, ss[i], -0.004), P(0, 0, (a + b) / 2));
+    cockpitMesh(g.build(), m, ckpt);
+  };
+  deck(S0, T0, CM.panel); deck(T1, S1, CM.tub);
+  for (const k of SIDES) {                                            // canopy seals along the sills
+    const curve = new THREE.CatmullRomCurve3(span(T0 - 0.35, S1 - 0.2, 24).map(s => sill(k, s, 0.004)));
+    cockpitMesh(new THREE.TubeGeometry(curve, 72, 0.013, 8), CM.rubber, ckpt);
+  }
+  // Martin-Baker US16E class seat at the same scale as the F-22's, set forward so the head box clears the canopy
+  const seat = ejectionSeat(CM); seat.scale.setScalar(0.84); seat.position.copy(P(0, 1.96, 4.95)); ckpt.add(seat);
+  const panel = panoramicPanel(CM, screen.tex); panel.position.copy(P(0, 2.3, 3.9)); panel.rotation.x = 15 * DEG; ckpt.add(panel);
+  const shield = glareshield(CM, 0.64, 0.22, 0.04); shield.position.copy(P(0, 2.5, 3.84)); ckpt.add(shield);
+  for (const k of SIDES) { const c = consoleBox(CM, 0.18, 2.2 - YF, 1.0); c.position.copy(P(k * 0.33, (2.2 + YF) / 2, 4.85)); ckpt.add(c); }
+  const stick = sideStick(CM); stick.position.copy(P(-0.33, 2.2, 4.68)); ckpt.add(stick);           // right hand (−x)
+  const thr = throttles(CM, 1); thr.position.copy(P(0.33, 2.2, 4.8)); ckpt.add(thr);                // left hand
+  for (const k of SIDES) cockpitMesh(new THREE.BoxGeometry(0.07, 0.16, 0.03), CM.metal, ckpt, P(k * 0.12, 1.92, 4.08), -0.3);   // rudder pedals
+  fuseReal.visible = false; ckpt.visible = false; canFrame.visible = false;
 
   // ═════ diverterless inlets: swept lips, ducts and the bump ahead of each ═════
   const pInt = part('intakes');
@@ -130,7 +183,7 @@ export function buildLightning(E: Engine): JetRig {
     const rings = [lip, ...NAC.map(n => [P(k * n[1], n[2], n[0]), P(k * n[3], n[4], n[0]), P(k * n[5], n[6], n[0]), P(k * n[7], n[8], n[0])])];
     add(pInt, loft(rings, { capEnd: true }).build());
     const c = lip.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(4);
-    well(pInt, lip.map(p => p.clone().lerp(c, 0.07).add(new THREE.Vector3(0, 0, -0.16))), Z);
+    well(pInt, lip.map(p => p.clone().lerp(c, 0.07).add(new THREE.Vector3(0, 0, -0.16))), Z, 'intake');
     const bump = (s: number, o: number, w: number) => [P(k * (0.7 + 0.02 * w), 1.56 + 0.3 * w, s), P(k * (0.7 + o), 1.56, s), P(k * (0.7 - 0.02 * w), 1.56 - 0.31 * w, s), P(k * 0.6, 1.56, s)];
     add(pInt, loft([bump(4.0, 0, 0.05), bump(4.75, 0.17, 1), bump(5.4, 0.1, 1.05)], { capEnd: true }).build());
   }
@@ -185,34 +238,51 @@ export function buildLightning(E: Engine): JetRig {
     const ring = (s: number, r: number) => Array.from({ length: n }, (_, i) => { const a = (i + 0.5) / n * Math.PI * 2; return P(r * Math.cos(a), NY + r * Math.sin(a), s); });
     return loft([ring(s0, r0), ring(s1, r1)]).build();
   };
-  add(pNoz, tube(13.7, 14.2, 0.62, 0.6));
+  add(pNoz, tube(13.7, 14.2, 0.62, 0.6), undefined, { real: 'nozzle' });
   const seg1 = hinge(pNoz, P(0, NY, 14.15), X, 'x');
-  add(seg1.inner, tube(14.15, 14.62, 0.6, 0.58));
+  add(seg1.inner, tube(14.15, 14.62, 0.6, 0.58), undefined, { real: 'nozzle' });
   const seg2 = hinge(seg1.inner, P(0, NY, 14.6), X, 'x');
-  add(seg2.inner, tube(14.58, 15.05, 0.58, 0.56));
+  add(seg2.inner, tube(14.58, 15.05, 0.58, 0.56), undefined, { real: 'nozzle' });
   const seg3 = hinge(seg2.inner, P(0, NY, 15.02), X, 'x');
-  add(seg3.inner, tube(15.0, 15.55, 0.56, 0.5));
-  well(seg3.inner, Array.from({ length: 16 }, (_, i) => { const a = (i + 0.5) / 16 * Math.PI * 2; return P(0.49 * Math.cos(a), NY + 0.49 * Math.sin(a), 15.45); }), new THREE.Vector3(0, 0, -1));
+  // variable-area exit: the last 25 cm of the nozzle opens with thrust and wider still in afterburner (scaled in pose)
+  const R3 = lerp(0.56, 0.5, 0.3 / 0.55), exit = hinge(seg3.inner, P(0, NY, 15.3), Z, 'z');
+  const zag = (s: number, r: number, dent: number) => Array.from({ length: 24 }, (_, i) => { const a = i / 24 * Math.PI * 2; return P(r * Math.cos(a), NY + r * Math.sin(a), s - (i % 2) * dent); });
+  const seg3Line = [add(seg3.inner, tube(15.0, 15.3, 0.56, R3), undefined, { real: 'nozzle' }), add(exit.inner, tube(15.3, 15.55, R3, 0.5), undefined, { real: 'nozzle' })];
+  well(exit.inner, Array.from({ length: 16 }, (_, i) => { const a = (i + 0.5) / 16 * Math.PI * 2; return P(0.49 * Math.cos(a), NY + 0.49 * Math.sin(a), 15.45); }), new THREE.Vector3(0, 0, -1), 'exhaust');
   { // serrated trailing edge of the nozzle, drawn as a zig-zag hairline
     const zz: V[] = []; for (let i = 0; i <= 24; i++) { const a = i / 24 * Math.PI * 2, r = 0.5; zz.push(P(r * Math.cos(a), NY + r * Math.sin(a), 15.55 - (i % 2) * 0.07)); }
-    seg3.inner.add(E.loopLine(zz, E.mats.major, false));
+    exit.inner.add(E.loopLine(zz, E.mats.major, false));
   }
+  // Real view: the exit ends in a true sawtooth edge (the hairline view draws it as the zig-zag above)
+  const seg3Real = [
+    add(seg3.inner, loft([zag(15.0, 0.56, 0), zag(15.3, R3, 0)]).build(), undefined, { real: 'nozzle', lines: false }),
+    add(exit.inner, loft([zag(15.3, R3, 0), zag(15.55, 0.5, 0.08)]).build(), undefined, { real: 'nozzle', lines: false }),
+  ];
+  seg3Real.forEach(m => { m.visible = false; });
 
   // ═════ STOVL lift system: lift fan, its doors, auxiliary inlets, roll posts ═════
   const pLift = part('liftFan'), pRoll = part('rollPosts');
   const LF0 = 6.5, LF1 = 8.0, LFW = 0.46;
-  well(pLift, [P(-LFW, topY(LF0, LFW) + 0.003, LF0), P(LFW, topY(LF0, LFW) + 0.003, LF0), P(LFW, topY(LF1, LFW) + 0.003, LF1), P(-LFW, topY(LF1, LFW) + 0.003, LF1)], up);
+  well(pLift, [P(-LFW, topY(LF0, LFW) + 0.003, LF0), P(LFW, topY(LF0, LFW) + 0.003, LF0), P(LFW, topY(LF1, LFW) + 0.003, LF1), P(-LFW, topY(LF1, LFW) + 0.003, LF1)], up, 'intake');
   const fanC = P(0, topY(7.25) + 0.006, 7.25), fan = new THREE.Group(); fan.position.copy(fanC); pLift.add(fan);
   { const blades: number[] = [], ring: V[] = [];
     for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2; blades.push(0.08 * Math.cos(a), 0, 0.08 * Math.sin(a), 0.38 * Math.cos(a + 0.25), 0, 0.38 * Math.sin(a + 0.25)); }
     for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; ring.push(new THREE.Vector3(0.39 * Math.cos(a), 0, 0.39 * Math.sin(a))); }
     fan.add(E.fat(blades, E.mats.major), E.loopLine(ring, E.mats.major)); }
+  // Real view: titanium blades on a hub inside a dark shroud ring, turning with the hairline fan
+  const fanReal = new THREE.Group(); fanReal.position.y = 0.01; fanReal.visible = false; fan.add(fanReal);
+  cockpitMesh(new THREE.CylinderGeometry(0.09, 0.11, 0.03, 16), CM.frame, fanReal);
+  cockpitMesh(new THREE.TorusGeometry(0.395, 0.016, 6, 48).rotateX(Math.PI / 2), CM.frame, fanReal);
+  for (let i = 0; i < 18; i++) {
+    const b = new THREE.BoxGeometry(0.3, 0.005, 0.07).rotateX(0.55).translate(0.245, 0, 0).rotateY(i / 18 * Math.PI * 2);
+    cockpitMesh(b, CM.metal, fanReal);
+  }
   const liftDoor = hinge(pLift, P(0, topY(LF1) + 0.004, LF1), X, 'x');   // hinged at its rear edge
   add(liftDoor.inner, slab([LF0, LF1].map(s => ({ le: P(-LFW, topY(s, LFW) + 0.014, s), te: P(LFW, topY(s, LFW) + 0.014, s), t: 0.02 })), up, [[0, 1], [0.5, 1.8], [1, 1]]).build());
   const auxDoor: Hinge[] = [];
   for (const k of SIDES) {
     const a0 = 8.15, a1 = 8.85, x0 = 0.1, x1 = 0.48;
-    well(pLift, [P(k * x0, topY(a0, x0) + 0.003, a0), P(k * x1, topY(a0, x1) + 0.003, a0), P(k * x1, topY(a1, x1) + 0.003, a1), P(k * x0, topY(a1, x0) + 0.003, a1)], up);
+    well(pLift, [P(k * x0, topY(a0, x0) + 0.003, a0), P(k * x1, topY(a0, x1) + 0.003, a0), P(k * x1, topY(a1, x1) + 0.003, a1), P(k * x0, topY(a1, x0) + 0.003, a1)], up, 'intake');
     const h = hinge(pLift, P(k * (x0 + x1) / 2, topY(a1, 0.3) + 0.004, a1), X, 'x');
     add(h.inner, slab([a0, a1].map(s => ({ le: P(k * x0, topY(s, x0) + 0.012, s), te: P(k * x1, topY(s, x1) + 0.012, s), t: 0.02 })), up, PLATE).build());
     auxDoor.push(h);
@@ -224,11 +294,11 @@ export function buildLightning(E: Engine): JetRig {
     add(h.inner, slab([l0, l1].map(s => ({ le: P(k * 0.42, y, s), te: P(k * 0.02, y, s), t: 0.025 })), up, PLATE).build());
     lowDoor.push(h);
   }
-  well(pLift, [P(-0.42, bellyY(7) - 0.003, 6.4), P(0.42, bellyY(7) - 0.003, 6.4), P(0.42, bellyY(7) - 0.003, 7.7), P(-0.42, bellyY(7) - 0.003, 7.7)], down);
+  well(pLift, [P(-0.42, bellyY(7) - 0.003, 6.4), P(0.42, bellyY(7) - 0.003, 6.4), P(0.42, bellyY(7) - 0.003, 7.7), P(-0.42, bellyY(7) - 0.003, 7.7)], down, 'intake');
   const rollDoor: Hinge[] = [];
   for (const k of SIDES) {
     const x0 = 2.5, x1 = 2.85, r0 = 9.5, r1 = 10.1, y = wY(2.7) - 0.1;
-    well(pRoll, [P(k * x0, y + 0.005, r0), P(k * x1, y + 0.005, r0), P(k * x1, y + 0.005, r1), P(k * x0, y + 0.005, r1)], down);
+    well(pRoll, [P(k * x0, y + 0.005, r0), P(k * x1, y + 0.005, r0), P(k * x1, y + 0.005, r1), P(k * x0, y + 0.005, r1)], down, 'intake');
     const h = hinge(pRoll, P(k * x1, y, (r0 + r1) / 2), Z, 'z');
     add(h.inner, slab([r0, r1].map(s => ({ le: P(k * x1, y - 0.01, s), te: P(k * x0, y - 0.01, s), t: 0.02 })), up, PLATE).build());
     rollDoor.push(h);
@@ -238,7 +308,7 @@ export function buildLightning(E: Engine): JetRig {
   const pNG = part('gearNose'), pMG = part('gearMain');
   const NGS = 3.6, NGY = bellyY(NGS);
   const noseGear = hinge(pNG, P(0, NGY, NGS), X, 'x');
-  add(noseGear.inner, merge([cyl(0.05, 0.55, NGY, 0, NGS), cyl(0.068, 0.32, 0.76, 0, NGS), box(-0.12, 0.12, 0.29, 0.35, NGS - 0.05, NGS + 0.05), brace(P(0, 0.55, NGS + 0.03), P(0, 0.9, NGS + 0.15), 0.022)]));
+  add(noseGear.inner, merge([cyl(0.05, 0.55, NGY, 0, NGS), cyl(0.068, 0.32, 0.76, 0, NGS), box(-0.12, 0.12, 0.29, 0.35, NGS - 0.05, NGS + 0.05), brace(P(0, 0.55, NGS + 0.03), P(0, 0.9, NGS + 0.15), 0.022)]), undefined, { real: 'strut' });
   add(noseGear.inner, wheel(0.32, 0.18, 0, 0.32, NGS));
   const taxiGlow = K.taxiLight(noseGear.inner, P(0, 0.88, NGS - 0.08));
   const noseDoor: Hinge[] = [];
@@ -247,18 +317,18 @@ export function buildLightning(E: Engine): JetRig {
     add(h.inner, slab([3.0, 4.3].map(s => ({ le: P(k * 0.22, y, s), te: P(k * 0.02, y, s), t: 0.025 })), up, PLATE).build());
     noseDoor.push(h);
   }
-  well(pNG, [P(-0.22, NGY - 0.002, 3.0), P(0.22, NGY - 0.002, 3.0), P(0.22, NGY - 0.002, 4.3), P(-0.22, NGY - 0.002, 4.3)], down);
+  well(pNG, [P(-0.22, NGY - 0.002, 3.0), P(0.22, NGY - 0.002, 3.0), P(0.22, NGY - 0.002, 4.3), P(-0.22, NGY - 0.002, 4.3)], down, 'well');
   const MGS = 9.2, MGY = 1.84;
   const mainGear: Record<number, Hinge> = {}, mainDoor: Record<number, Hinge> = {};
   for (const k of SIDES) {
     const x = k * 1.55;
     mainGear[k] = hinge(pMG, P(x, MGY, MGS), X, 'x');
-    add(mainGear[k].inner, merge([cyl(0.07, 0.62, MGY, x, MGS), cyl(0.088, 0.36, 0.95, x, MGS), box(x - 0.18 * k - 0.04, x - 0.18 * k + 0.04, 0.33, 0.4, MGS - 0.05, MGS + 0.05), brace(P(x, 1.12, MGS), P(k * 1.22, 1.78, MGS - 0.45), 0.032)]));
+    add(mainGear[k].inner, merge([cyl(0.07, 0.62, MGY, x, MGS), cyl(0.088, 0.36, 0.95, x, MGS), box(x - 0.18 * k - 0.04, x - 0.18 * k + 0.04, 0.33, 0.4, MGS - 0.05, MGS + 0.05), brace(P(x, 1.12, MGS), P(k * 1.22, 1.78, MGS - 0.45), 0.032)]), undefined, { real: 'strut' });
     add(mainGear[k].inner, wheel(0.36, 0.26, x + k * 0.02, 0.36, MGS));
     const y = 1.85;
     mainDoor[k] = hinge(pMG, P(k * 1.85, y, MGS), Z, 'z');
     add(mainDoor[k].inner, slab([8.2, 10.2].map(s => ({ le: P(k * 1.85, y, s), te: P(k * 1.3, y, s), t: 0.025 })), up, PLATE).build());
-    well(pMG, [P(k * 1.3, y + 0.01, 8.2), P(k * 1.85, y + 0.01, 8.2), P(k * 1.85, y + 0.01, 10.2), P(k * 1.3, y + 0.01, 10.2)], down);
+    well(pMG, [P(k * 1.3, y + 0.01, 8.2), P(k * 1.85, y + 0.01, 8.2), P(k * 1.85, y + 0.01, 10.2), P(k * 1.3, y + 0.01, 10.2)], down, 'well');
   }
 
   // ═════ weapons bays: two bays, each with an inboard and an outboard door ═════
@@ -272,7 +342,7 @@ export function buildLightning(E: Engine): JetRig {
     const ho = hinge(pBay, P(k * 0.7, y(bm), bm), Z, 'z');
     add(ho.inner, slab([b0, b1].map(s => ({ le: P(k * 0.7, y(s), s), te: P(k * 0.395, y(s), s), t: 0.025 })), up, PLATE).build());
     inDoor.push(hi); outDoor.push(ho);
-    well(pBay, [P(k * 0.08, bellyY(b0) - 0.003, b0), P(k * 0.7, bellyY(b0) - 0.003, b0), P(k * 0.7, bellyY(b1) - 0.003, b1), P(k * 0.08, bellyY(b1) - 0.003, b1)], down);
+    well(pBay, [P(k * 0.08, bellyY(b0) - 0.003, b0), P(k * 0.7, bellyY(b0) - 0.003, b0), P(k * 0.7, bellyY(b1) - 0.003, b1), P(k * 0.08, bellyY(b1) - 0.003, b1)], down, 'bay');
   }
   const amraam = missileGeo(3.0, 0.085, 0.15, true), bomb = missileGeo(2.8, 0.16, 0.2, false);
   const stores = [
@@ -326,6 +396,7 @@ export function buildLightning(E: Engine): JetRig {
     rollDoor.forEach((h, i) => h.set(SIDES[i] * 80 * DEG * phase(t, 0.3, 0.65)));
     const sw = -30 * DEG * phase(t, 0.4, 1);
     seg1.set(sw); seg2.set(sw); seg3.set(sw);
+    const open = 1 + 0.03 * st.rpm + 0.07 * st.abT; exit.outer.scale.set(open, open, 1);
     fan.visible = t > 0.02;
     fanAngle += dt * st.rpm * phase(t, 0.2, 0.7) * 14; fan.rotation.y = fanAngle;
     // gear and doors
@@ -346,8 +417,15 @@ export function buildLightning(E: Engine): JetRig {
   }
 
   return {
-    craft, cgY: 1.9, parts, screen, pose, altMax: 3.4, hoverAlt: 2.8, engines: 1,
-    view: { target: P(0, 1.7, 7.8), dist: 28 },
+    craft, cgY: 1.9, parts, screen, pose, altMax: 3.4, hoverAlt: 2.8, engines: 1, stage: apron.deck,
+    // realistic style: the darker, more even grey of the F-35's coating; the plume leaves the swivel nozzle and turns with it
+    real: {
+      skin: { light: '#64696d', dark: '#585d61', camo: 0.4, panel: 2.6, metalness: 0.24, roughness: 0.5 },
+      focus: P(0, 1.5, 7.8), size: 16, stopZ: NOSE_Z - (NGS - 0.55),
+      nozzles: [{ parent: seg3.inner, at: P(0, NY, 15.6), w: 0.95, h: 0.95 }],
+      only: { line: [fuseLine, ...lineCockpit, screenMesh, ...seg3Line], real: [fuseReal, ckpt, canFrame, ...seg3Real, fanReal] },
+    },
+    view: { target: P(0, 1.7, 7.8), dist: 28, min: 2.5 },
     lights: { ...K.mats, padLightMat: apron.padLightMat, stripGlow, navGlow, beaconGlow, taxiGlow, padGlow: apron.padGlow, shadowMat: apron.shadowMat, taxiPoolMat: apron.taxiPoolMat, cockpitLight },
   };
 }

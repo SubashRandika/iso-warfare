@@ -1,6 +1,6 @@
-// Afterburner plume for the realistic style: three nested additive shells (white-hot core, orange body, faint
-// blue-violet tail) with shock diamonds near the nozzle and a fast flicker, plus a real orange light that falls on
-// the airframe and the ground. Small and dependency-free, so a vehicle model can import it directly.
+// Exhaust plumes for the realistic style. Afterburner: three nested additive shells (white-hot core, orange body,
+// faint blue-violet tail) with shock diamonds near the nozzle and a fast flicker. Dry thrust: two short, faint shells.
+// Small and dependency-free, so a vehicle model can import it directly.
 import * as THREE from 'three';
 
 const VERT = /* glsl */`
@@ -29,22 +29,31 @@ void main() {
   gl_FragColor = vec4(col * k, k);
 }`;
 
-const SHELLS = [
-  { len: 0.45, r: 0.72, power: 1.0, diam: 2.4, c0: [7, 5.2, 2.6], c1: [4.5, 1.8, 0.5], c2: [1.2, 0.5, 0.4] },
-  { len: 0.72, r: 0.98, power: 0.8, diam: 1.0, c0: [4, 2.6, 1.2], c1: [3.2, 1.0, 0.25], c2: [0.5, 0.25, 0.8] },
-  { len: 1.0, r: 1.18, power: 0.45, diam: 0.0, c0: [2, 1.2, 0.6], c1: [1.4, 0.45, 0.2], c2: [0.25, 0.2, 0.9] },
-];
+const SHELLS = {
+  // afterburner: white-hot core with shock diamonds, orange body, blue-violet tail
+  ab: [
+    { len: 0.45, r: 0.72, power: 1.0, diam: 2.4, c0: [7, 5.2, 2.6], c1: [4.5, 1.8, 0.5], c2: [1.2, 0.5, 0.4] },
+    { len: 0.72, r: 0.98, power: 0.8, diam: 1.0, c0: [4, 2.6, 1.2], c1: [3.2, 1.0, 0.25], c2: [0.5, 0.25, 0.8] },
+    { len: 1.0, r: 1.18, power: 0.45, diam: 0.0, c0: [2, 1.2, 0.6], c1: [1.4, 0.45, 0.2], c2: [0.25, 0.2, 0.9] },
+  ],
+  // dry thrust: hot gas glowing faintly orange at the exit and fading within a few metres
+  dry: [
+    { len: 0.38, r: 0.8, power: 1.0, diam: 0.5, c0: [2.4, 1.35, 0.6], c1: [1.3, 0.5, 0.16], c2: [0.25, 0.14, 0.28] },
+    { len: 1.0, r: 1.02, power: 0.4, diam: 0.0, c0: [1.1, 0.62, 0.34], c1: [0.55, 0.26, 0.12], c2: [0.12, 0.1, 0.24] },
+  ],
+};
 
 /**
  * A plume leaving a nozzle at `at`, blowing along `dir`, `w` wide and `h` tall at the exit, up to `len` long.
+ * `kind` 'ab' is an afterburner, 'dry' the faint hot exhaust of an engine without it.
  * set(power 0..1, now ms) each frame; power 0 hides it.
  */
-export function makePlume(parent: THREE.Object3D, at: THREE.Vector3, dir: THREE.Vector3, w: number, h: number, len: number, seed = 0) {
+export function makePlume(parent: THREE.Object3D, at: THREE.Vector3, dir: THREE.Vector3, w: number, h: number, len: number, seed = 0, kind: keyof typeof SHELLS = 'ab') {
   const g = new THREE.Group(); g.position.copy(at);
   g.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir.clone().normalize());
   g.visible = false; parent.add(g);
   const mats: THREE.ShaderMaterial[] = [];
-  for (const s of SHELLS) {
+  for (const s of SHELLS[kind]) {
     const L = len * s.len;
     const geo = new THREE.CylinderGeometry(0.5, 0.5 * 0.28, L, 36, 24, true); geo.translate(0, -L / 2, 0);
     const m = new THREE.ShaderMaterial({

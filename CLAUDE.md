@@ -60,12 +60,15 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   Tags: skin, nozzle, cockpit, intake, recess, well, bay, exhaust, strut, tyre, store, seeker, canopy. Untagged body
   meshes get the skin; `kit.wheel` and `missileGeo` tag themselves. Add a tag in `lib/real/materials.ts` if needed.
 - The skin needs no UVs (triplanar in model coordinates), so keep building meshes in model coordinates.
-- Afterburners and rocket motors: `makePlume(parent, at, dir, w, h, len)` from `lib/real/plume.ts`; plumes are
+- Afterburners and rocket motors: `makePlume(parent, at, dir, w, h, len, seed, kind)` from `lib/real/plume.ts`
+  (`kind` 'ab' or 'dry': the jets show a faint dry plume whenever the engine runs, the afterburner on top); plumes are
   real-style only (no exhaust glow in the hairline look).
 - Detail that only belongs in Real goes in `only: { line, real }` (shown in one style each). The F-22 swaps in a
   fuselage with a true cockpit opening and a full cockpit built from `lib/models/fighters/jet/cockpit.ts`
   (ejection seat, panel with live displays, glareshield, HUD, consoles, stick, throttles) for its hairline boxes.
-- Reference: the F-22 (`lib/models/fighters/f22/airframe.ts` tags + `real` block, `jet/sim.ts` builds the spec).
+  The F-35B does the same with a panoramic display and no HUD, a sawtooth nozzle edge and real lift-fan blades.
+- Reference: the F-22 and F-35B (`lib/models/fighters/*/airframe.ts` tags + `real` block, `jet/sim.ts` builds the
+  spec). A plume parented to a moving part (the F-35B's swivel nozzle segment) turns with it.
 
 ## Rules that keep the look and the behaviour consistent
 

@@ -1,5 +1,5 @@
-// Cockpit furniture for the realistic style: ejection seat, instrument panel with live displays, glareshield, HUD,
-// side consoles, side-stick, throttles and rudder pedals. Plain three.js meshes in physically based materials with
+// Cockpit furniture for the realistic style: ejection seat, instrument panel with live displays (three displays and a
+// HUD, or one panoramic display), glareshield, side consoles, side-stick, throttles and rudder pedals. Plain three.js meshes in physically based materials with
 // small procedural textures; they are shown only in the Real view (the hairline view keeps its simple cockpit).
 // Local axes of every piece: x to the pilot's left (+x = port), y up, z forward.
 import * as THREE from 'three';
@@ -103,6 +103,7 @@ export function cockpitMaterials() {
     handle: std({ map: stripeTexture(), roughness: 0.5 }),
     metal: std({ color: 0x8c8f92, roughness: 0.32, metalness: 0.85 }),
     grip: std({ color: 0x1b1c1d, roughness: 0.82 }),
+    knob: std({ color: 0xd9d8d0, roughness: 0.45 }),
     glass: new THREE.MeshPhysicalMaterial({ color: 0xa8d8b4, transparent: true, opacity: 0.22, roughness: 0.02, metalness: 0.1, depthWrite: false, side: THREE.DoubleSide }),
     ufd: new THREE.MeshBasicMaterial({ map: ufdTexture(), toneMapped: false }),
     hud: new THREE.MeshBasicMaterial({ map: hudTexture(), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
@@ -179,6 +180,27 @@ export function instrumentPanel(M: CockpitMats, screen: THREE.Texture, w = 0.86,
   return g;
 }
 
+/**
+ * Panel for a cockpit without a HUD (F-35): one panoramic touchscreen across the panel showing the whole `screen`
+ * canvas, a small standby display under it between two switch panels, and the wheel-shaped gear handle on the left.
+ * Origin at the middle of the face; the face looks aft (−z).
+ */
+export function panoramicPanel(M: CockpitMats, screen: THREE.Texture, w = 0.62, h = 0.36, sw = 0.5, sh = 0.19) {
+  const g = new THREE.Group();
+  solid(rbox(w, h, 0.09, 0.02), M.panel, g, V(0, 0, 0.045));
+  const y = h / 2 - sh / 2 - 0.03;
+  solid(rbox(sw + 0.028, sh + 0.028, 0.02, 0.006), M.frame, g, V(0, y, -0.004));
+  const live = new THREE.MeshBasicMaterial({ map: screen, toneMapped: false }); live.userData.realStyle = true;
+  const sc = new THREE.Mesh(aftPlane(sw, sh), live); sc.position.set(0, y, -0.017); g.add(sc);
+  const y2 = y - sh / 2 - 0.065;
+  const sb = new THREE.Mesh(aftPlane(0.075, 0.06), M.ufd); sb.position.set(0, y2, -0.004); g.add(sb);
+  solid(new THREE.BoxGeometry(0.09, 0.075, 0.012), M.frame, g, V(0, y2, -0.002));
+  for (const k of [1, -1]) { const kp = new THREE.Mesh(aftPlane(0.12, 0.075), M.keypad); kp.position.set(k * 0.12, y2, -0.004); g.add(kp); }
+  solid(new THREE.BoxGeometry(0.012, 0.012, 0.07), M.metal, g, V(w * 0.38, y2, -0.035));
+  solid(new THREE.CylinderGeometry(0.024, 0.024, 0.018, 14).rotateX(Math.PI / 2), M.knob, g, V(w * 0.38, y2, -0.075));
+  return g;
+}
+
 /** HUD on the glareshield: two posts, a top bar, the combiner glass and its symbology (lit with power) */
 export function hud(M: CockpitMats) {
   const g = new THREE.Group();
@@ -213,13 +235,13 @@ export function sideStick(M: CockpitMats) {
   return g;
 }
 
-/** twin throttles in their quadrant */
-export function throttles(M: CockpitMats) {
+/** throttles in their quadrant: twin levers, or one (n = 1) for a single-engine jet */
+export function throttles(M: CockpitMats, n = 2) {
   const g = new THREE.Group();
   solid(rbox(0.09, 0.03, 0.2, 0.008), M.frame, g, V(0, 0.015, 0));
-  for (const k of [1, -1]) {
+  for (const k of n > 1 ? [1, -1] : [0]) {
     solid(new THREE.BoxGeometry(0.014, 0.1, 0.02), M.metal, g, V(k * 0.018, 0.07, 0.02), 0.35);
-    solid(rbox(0.045, 0.06, 0.07, 0.018), M.grip, g, V(k * 0.024, 0.13, 0.045), 0.2);
+    solid(rbox(n > 1 ? 0.045 : 0.056, 0.06, 0.07, 0.018), M.grip, g, V(k * 0.024, 0.13, 0.045), 0.2);
   }
   return g;
 }
