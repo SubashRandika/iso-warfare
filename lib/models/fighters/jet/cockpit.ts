@@ -224,14 +224,15 @@ export function glareshield(M: CockpitMats, w: number, d: number, rise = 0.06) {
   return m;
 }
 
-/** side-stick: boot, shaft and grip with trigger and hat switch */
-export function sideStick(M: CockpitMats) {
-  const g = new THREE.Group();
+/** control stick: boot, shaft and grip with trigger and hat switch; a side-stick by default, a centre stick (on the
+ *  floor between the knees) with a longer `shaft` */
+export function sideStick(M: CockpitMats, shaft = 0.12) {
+  const g = new THREE.Group(), top = 0.03 + shaft;
   solid(new THREE.CylinderGeometry(0.03, 0.045, 0.04, 16), M.rubber, g, V(0, 0.02, 0));
-  solid(new THREE.CylinderGeometry(0.011, 0.011, 0.12, 10), M.metal, g, V(0, 0.09, 0.006), 0.12);
-  solid(rbox(0.046, 0.11, 0.058, 0.02), M.grip, g, V(0, 0.185, 0.02), 0.12);
-  solid(new THREE.BoxGeometry(0.012, 0.03, 0.012), M.metal, g, V(0, 0.17, 0.052), 0.3);
-  solid(new THREE.CylinderGeometry(0.008, 0.008, 0.01, 10), M.frame, g, V(0, 0.244, 0.028));
+  solid(new THREE.CylinderGeometry(0.011, 0.011, shaft, 10), M.metal, g, V(0, 0.03 + shaft / 2, 0.006), 0.12);
+  solid(rbox(0.046, 0.11, 0.058, 0.02), M.grip, g, V(0, top + 0.035, 0.02), 0.12);
+  solid(new THREE.BoxGeometry(0.012, 0.03, 0.012), M.metal, g, V(0, top + 0.02, 0.052), 0.3);
+  solid(new THREE.CylinderGeometry(0.008, 0.008, 0.01, 10), M.frame, g, V(0, top + 0.094, 0.028));
   return g;
 }
 

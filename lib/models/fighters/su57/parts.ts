@@ -1,0 +1,25 @@
+// Su-57 part catalogue: names, what each part does on the real aircraft, and what clicking it does here.
+// Plain data so the UI can import it without pulling in three.js.
+
+import type { PartInfo } from '../../../catalog/types';
+
+export const FELON_PARTS: PartInfo[] = [
+  { id: 'radome', name: 'Radome & IRST', text: 'The nose houses the N036 active electronically scanned radar. The glass ball ahead of the windscreen, offset to the right as on other Sukhoi fighters, is the infrared search-and-track sensor: it finds aircraft by their heat without transmitting anything.' },
+  { id: 'canopy', name: 'Canopy & cockpit', click: 'opens or closes the canopy', text: 'A one-piece canopy hinged at the rear. Inside: a K-36 family ejection seat, a wide-angle head-up display and large colour displays that light up when the jet has power. Unlike the F-22 and F-35 side-sticks, the stick is in the centre, between the pilot’s knees.' },
+  { id: 'intakes', name: 'Intakes & nacelles', click: 'starts or stops the engines', text: 'Two rectangular intakes under the wing-root extensions, set far apart. Their ducts run back to engines in widely spaced nacelles, which leaves a tunnel between them for internal weapons bays.' },
+  { id: 'levcon', name: 'LEVCONs', click: 'runs a deflection check', text: 'Leading-edge vortex controllers: the forward parts of the wing-root extensions pivot up and down. They shape the strong vortices that come off the wing roots at high angles of attack, and also help control pitch, a little like canards.' },
+  { id: 'wings', name: 'Wings', text: 'A large, highly swept wing, about 14 m in span. Together with the flat lifting body between the nacelles it gives a low wing loading, which suits slow, high-angle-of-attack manoeuvring.' },
+  { id: 'lef', name: 'Leading-edge flaps', click: 'runs a deflection check', text: 'Full-span leading-edge flaps, scheduled by the flight computers with angle of attack and speed. They droop for take-off, landing and hard manoeuvring.' },
+  { id: 'flaperons', name: 'Flaperons', click: 'runs a deflection check', text: 'Inboard trailing-edge surfaces that work as flaps and as ailerons.' },
+  { id: 'ailerons', name: 'Ailerons', click: 'runs a deflection check', text: 'Outboard trailing-edge surfaces for roll, helped by the flaperons, the stabilators and differential nozzle vectoring.' },
+  { id: 'fins', name: 'All-moving vertical tails', click: 'swings the fins', text: 'Each fin turns as a whole on a pivot, so there is no separate rudder. They are small for the jet’s size and canted outward. Both turn together for yaw (Z and X keys here); for the speed brake (S) they splay apart.' },
+  { id: 'stabs', name: 'Stabilators', click: 'runs a deflection check', text: 'All-moving horizontal tails on booms outboard of the engines. They move together for pitch and in opposite directions to help roll.' },
+  { id: 'nozzles', name: 'Thrust-vectoring nozzles', click: 'toggles afterburner', text: 'Two AL-41F1 afterburning turbofans with round, swivelling nozzles. Here both nozzles follow the stick in pitch and move in opposite directions for roll, and their petals open wider in afterburner. Vectored thrust lets the jet keep control at speeds and angles where the tail surfaces lose their bite.' },
+  { id: 'gearNose', name: 'Nose gear', click: 'raises or lowers the gear', text: 'A steerable nose leg with twin wheels, closed in by two doors when retracted. It carries the taxi light.' },
+  { id: 'gearMain', name: 'Main gear', click: 'raises or lowers the gear', text: 'Single-wheel main legs on a wide track, outboard of the engine nacelles. They fold into bays in the wing roots.' },
+  { id: 'bayMain', name: 'Main weapons bays', click: 'opens or closes the main bays', text: 'Two long bays in tandem in the tunnel between the nacelles, each with two doors. They carry medium-range air-to-air missiles or guided bombs internally to keep the radar signature low; here the launchers push the missiles clear of the doors.' },
+  { id: 'baySide', name: 'Side weapons bays', click: 'opens or closes the side bays', text: 'A small bay in each wing-root bulge behind the LEVCON, each for one short-range air-to-air missile. Here a trapeze swings the missile out so its seeker can see the target before launch.' },
+  { id: 'refuel', name: 'Refuelling probe', click: 'extends or stows the probe', text: 'A retractable probe on the left side of the nose for probe-and-drogue air-to-air refuelling, as on other Sukhoi fighters. It lies flush with the skin until it is needed.' },
+  { id: 'lights', name: 'Formation & nav lights', click: 'switches the lights', text: 'Formation light strips on the nose, wingtips and tail booms, position lights at the wingtips and flashing anti-collision beacons above and below.' },
+  { id: 'airframe', name: 'Airframe', text: 'Single-seat, twin-engine multirole fighter, about 20 m long with a 14 m span. A blended lifting body, aligned edges and internal weapons bays reduce its radar signature. The long sting between the engines ends in the tail cone.' },
+];

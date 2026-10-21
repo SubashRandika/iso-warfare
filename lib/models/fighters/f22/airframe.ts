@@ -8,6 +8,7 @@ import { makeKit, DEG, SIDES, PLATE, ease, clamp01 } from '../jet/kit';
 import { buildApron } from '../../../stages/apron';
 import type { Hinge, JetRig, JetState } from '../jet/types';
 import { cockpitMaterials, cockpitMesh, consoleBox, ejectionSeat, glareshield, hud, instrumentPanel, sideStick, throttles } from '../jet/cockpit';
+import { decalMaterial, decalTexture, layDecal, profileAt, starPath } from '../../../real/decals';
 
 type V = THREE.Vector3;
 const NOSE_Z = 9.45;
@@ -204,7 +205,7 @@ export function buildRaptor(E: Engine): JetRig {
     const boxLE = (x: number) => at(x, wLE(x) + lefC(x)), boxTE = (x: number) => at(x, wTE(x) - csC(x));
     add(pWing, slab([WR, WT].map(x => ({ le: boxLE(x), te: boxTE(x), t: wT(x) })), n, BOX_PROF).build());
     lef[k] = hinge(pLef, boxLE(WR), boxLE(WT).sub(boxLE(WR)), 'x');
-    add(lef[k].inner, slab([WR, WT].map(x => ({ le: at(x, wLE(x)), te: boxLE(x), t: wT(x) })), n, LEF_PROF).build());
+    add(lef[k].inner, slab([WR, WT].map(x => ({ le: at(x, wLE(x)), te: boxLE(x), t: wT(x) })), n, LEF_PROF).build(), undefined, { real: 'edge' });
     flap[k] = hinge(pFlap, boxTE(WR), boxTE(FLAP_END).sub(boxTE(WR)), 'x');
     add(flap[k].inner, slab([WR, FLAP_END].map(x => ({ le: boxTE(x), te: at(x, wTE(x)), t: wT(x) })), n, CS_PROF).build());
     ail[k] = hinge(pAil, boxTE(FLAP_END), boxTE(WT).sub(boxTE(FLAP_END)), 'x');
@@ -340,6 +341,71 @@ export function buildRaptor(E: Engine): JetRig {
   const navPos = SIDES.map(k => P(k * (WT - 0.02), wY(WT), wLE(WT) + 0.12));
   const { stripGlow, navGlow, beaconGlow } = K.finishLights(navPos, [P(0, topY(11.4) + 0.05, 11.4), P(0, bellyY(12.8) - 0.05, 12.8)]);
 
+  // ═════ Real view only: low-visibility markings laid onto the skin ═════
+  const decals: THREE.Mesh[] = [];
+  const GREY = '#565b5e';
+  const insignia = decalTexture(512, 256, x => {                    // star-and-bar, outlines only (low-visibility)
+    x.strokeStyle = GREY; x.lineJoin = 'miter'; x.lineWidth = 7;
+    const r = 78, cy = 128, half = 26, edge = Math.sqrt(r * r - half * half);
+    x.beginPath(); x.arc(256, cy, r, 0, Math.PI * 2); x.stroke();
+    starPath(x, 256, cy, r - 4); x.stroke();
+    for (const d of [-1, 1]) {
+      x.beginPath(); x.moveTo(256 + d * edge, cy - half); x.lineTo(256 + d * (r + 112), cy - half); x.lineTo(256 + d * (r + 112), cy + half); x.lineTo(256 + d * edge, cy + half); x.stroke();
+      x.lineWidth = 4; x.strokeRect(d > 0 ? 256 + r + 10 : 256 - r - 102, cy - 8, 92, 16); x.lineWidth = 7;
+    }
+  });
+  const slipway = decalTexture(128, 512, x => {                     // refuelling slipway ahead of the receptacle
+    x.fillStyle = GREY;
+    x.beginPath(); x.moveTo(30, 0); x.lineTo(42, 0); x.lineTo(16, 512); x.lineTo(4, 512); x.fill();
+    x.beginPath(); x.moveTo(98, 0); x.lineTo(86, 0); x.lineTo(112, 512); x.lineTo(124, 512); x.fill();
+    for (let y = 40; y < 512; y += 64) x.fillRect(58, y, 12, 30);
+  });
+  const diamond = decalTexture(64, 64, x => { x.fillStyle = '#4a4f52'; x.beginPath(); x.moveTo(32, 2); x.lineTo(62, 32); x.lineTo(32, 62); x.lineTo(2, 32); x.fill(); });
+  const doorLines = decalTexture(512, 128, x => {                   // bay door outline with sawtooth ends
+    x.strokeStyle = GREY; x.lineWidth = 4; x.lineJoin = 'miter';
+    const tooth = (x0: number, d: number) => { x.moveTo(x0, 8); for (let i = 1; i <= 8; i++) x.lineTo(x0 + (i % 2 ? d : 0), 8 + i * 14); };
+    x.beginPath(); x.moveTo(20, 8); x.lineTo(492, 8); tooth(492, -14); x.moveTo(20, 120); x.lineTo(492, 120); x.moveTo(20, 8); tooth(20, 14); x.stroke();
+  });
+  const insMat = decalMaterial(insignia), slipMat = decalMaterial(slipway), diaMat = decalMaterial(diamond), doorMat = decalMaterial(doorLines);
+  const edgeMat = decalMaterial(decalTexture(4, 4, x => { x.fillStyle = '#d2d5d6'; x.fillRect(0, 0, 4, 4); }), { metalness: 0.45, roughness: 0.34 });
+  const add01 = (parent: THREE.Object3D, mat: THREE.Material, at: (a: number, b: number) => THREE.Vector3, n = 12) => decals.push(layDecal(parent, mat, (u, v) => at(u + 0.5, v + 0.5), n));
+  for (const k of SIDES) {
+    // wing surfaces, top (side = 1) and bottom (side = −1), on the box and on the trailing-edge surfaces
+    const boxAt = (x: number, s: number, side: number, lift = 0.004) => { const le = wLE(x) + lefC(x), te = wTE(x) - csC(x); return P(k * x, wY(x) + side * (wT(x) / 2 * profileAt(BOX_PROF, (s - le) / (te - le)) + lift), s); };
+    const csAt = (x: number, s: number, side: number) => { const h = wTE(x) - csC(x); return P(k * x, wY(x) + side * (wT(x) / 2 * profileAt(CS_PROF, (s - h) / csC(x)) + 0.004), s); };
+    for (const side of [1, -1]) {
+      // light edge bands: trailing edges of the flaperon and aileron, and the wingtip (the leading-edge flap is painted 'edge')
+      add01(flap[k].inner, edgeMat, (a, b) => { const x = lerp(WR + 0.02, FLAP_END - 0.02, a); return csAt(x, wTE(x) - 0.2 * b, side); });
+      add01(ail[k].inner, edgeMat, (a, b) => { const x = lerp(FLAP_END + 0.05, WT, a); return csAt(x, wTE(x) - 0.2 * b, side); });
+      add01(pWing, edgeMat, (a, b) => { const x = WT - 0.2 * a; return boxAt(x, lerp(wLE(x) + lefC(x), wTE(x) - csC(x), b), side); });
+      // stabilator: leading edge, trailing edge, tip
+      const stAt = (x: number, s: number) => P(k * x, SY + side * (sT(x) / 2 * profileAt(FULL_PROF, (s - sLE(x)) / (sTE(x) - sLE(x))) + 0.004), s);
+      add01(stab[k].inner, edgeMat, (a, b) => { const x = lerp(SR + 0.05, ST, a); return stAt(x, sLE(x) + 0.22 * b); });
+      add01(stab[k].inner, edgeMat, (a, b) => { const x = lerp(SR + 0.05, ST, a); return stAt(x, sTE(x) - 0.2 * b); });
+      add01(stab[k].inner, edgeMat, (a, b) => { const x = ST - 0.18 * a; return stAt(x, lerp(sLE(x), sTE(x), b)); });
+      // fin: leading edge on the fixed fin, trailing edge on the rudder and above it
+      const v = new THREE.Vector3(k * Math.sin(CANT), Math.cos(CANT), 0), n = new THREE.Vector3(k * Math.cos(CANT), -Math.sin(CANT), 0);
+      const finAt = (h: number, s: number, pr: [number, number][], c: number) => P(k * FIN_X, FIN_Y, s).addScaledVector(v, h).addScaledVector(n, side * (fT(h) / 2 * profileAt(pr, c) + 0.004));
+      add01(pFin, edgeMat, (a, b) => { const h = FH * a, s = fLE(h) + 0.22 * b; return finAt(h, s, FULL_PROF, (s - fLE(h)) / (fTE(h) - fLE(h))); });
+      add01(pFin, edgeMat, (a, b) => { const h = lerp(R1, FH, a), s = fTE(h) - 0.2 * b; return finAt(h, s, FULL_PROF, (s - fLE(h)) / (fTE(h) - fLE(h))); });
+      add01(rud[k].inner, edgeMat, (a, b) => { const h = lerp(R0 + 0.02, R1 - 0.02, a), s = fTE(h) - 0.2 * b, h0 = lerp(fLE(h), fTE(h), RC); return finAt(h, s, [[0, 0.5], [1, 0.03]], (s - h0) / (fTE(h) - h0)); });
+      // small dark diamond panels, two per wing face
+      for (const [x, c] of side > 0 ? [[3.2, 0.15], [6.1, 0.2]] : [[2.6, 0.6], [5.6, 0.12]]) {
+        const s0 = lerp(wLE(x) + lefC(x), wTE(x) - csC(x), c);
+        decals.push(layDecal(pWing, diaMat, (u, w) => boxAt(x - k * u * 0.2, s0 - w * 0.2, side, 0.005), 4));
+      }
+    }
+    // star-and-bar on the upper left wing and under the right wing (USAF practice), star toward the nose
+    const wx = 4.6, ws = lerp(wLE(wx) + lefC(wx), wTE(wx) - csC(wx), 0.5);
+    decals.push(layDecal(pWing, insMat, (u, w) => boxAt(wx - k * u * 1.7, ws - w * 0.85, k)));
+    // main bay door: outline with sawtooth ends on its outer (lower) face; it moves with the door
+    const door = bayDoor[SIDES.indexOf(k)];
+    add01(door.inner, doorMat, (a, b) => { const s = lerp(6.9 + 0.05, 10.6 - 0.05, a), x = lerp(0.04, 0.73, b); return P(k * x, bellyY(s) - 0.008 - 0.0125 - 0.003, s); }, 10);
+    // and a diamond each side of the belly between the bays and the gear
+    decals.push(layDecal(pAir, diaMat, (u, w) => { const s = 12.3 - w * 0.2, x = k * 0.55 + u * 0.2; return P(x, bellyY(s) - 0.004, s); }, 4));
+  }
+  decals.push(layDecal(pAir, slipMat, (u, v) => { const x = u * 0.5, s = 8.85 - v * 1.3; return P(x, topY(s, x) + 0.005, s); }, 12));
+
   const apron = buildApron(E, { noseZ: NOSE_Z, length: 18.9, halfSpan: WT, noseGearS: NGS });
   const gearLegs = [noseGear.outer, mainGear[1].outer, mainGear[-1].outer];
 
@@ -377,12 +443,13 @@ export function buildRaptor(E: Engine): JetRig {
 
   return {
     craft, cgY: 2.2, parts, screen, pose, altMax: 3.6, engines: 2, stage: apron.deck,
-    // realistic style: two-tone grey RAM coating with a silvery sheen; plumes leave the 2D nozzles
+    // realistic style: light silver-grey coating with soft darker patches and a metallic sheen, subtle panels,
+    // lighter edge bands, low-visibility markings; plumes leave the 2D nozzles
     real: {
-      skin: { light: '#737a7e', dark: '#565c60', camo: 0.9, panel: 3.2, metalness: 0.3, roughness: 0.44 },
+      skin: { light: '#a8adaf', dark: '#71777b', camo: 0.9, panel: 3.2, metalness: 0.5, roughness: 0.34, scale: 0.62, tone: 0.35, seam: 0.5, edge: '#d2d5d6' },
       focus: P(0, 1.6, 9.6), size: 19, stopZ: NOSE_Z - (NGS - 0.55),
       nozzles: SIDES.map(k => ({ parent: pNoz, at: P(k * 0.8, 2.14, 18.82), w: 1.0, h: 0.5 })),
-      only: { line: [fuseLine, ...lineCockpit, screenMesh], real: [fuseReal, ckpt] },
+      only: { line: [fuseLine, ...lineCockpit, screenMesh], real: [fuseReal, ckpt, ...decals] },
       power: k => hudSet.setPower(k),
     },
     view: { target: P(0, 1.9, 9.6), dist: 33, min: 2.5 },

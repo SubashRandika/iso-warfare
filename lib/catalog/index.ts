@@ -4,9 +4,10 @@ import type { Category, CategoryId, ModelDef } from './types';
 import { CATEGORIES, DOMAINS } from './categories';
 import { f22 } from '../models/fighters/f22/def';
 import { f35 } from '../models/fighters/f35/def';
+import { su57 } from '../models/fighters/su57/def';
 import { m17 } from '../models/pistols/m17/def';
 
-export const MODELS: ModelDef[] = [f22, f35, m17];
+export const MODELS: ModelDef[] = [f22, f35, su57, m17];
 
 export { CATEGORIES, DOMAINS };
 export const DEFAULT_MODEL = 'f22';

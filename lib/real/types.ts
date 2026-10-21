@@ -12,6 +12,18 @@ export interface SkinSpec {
   panel: number;                   // metres one panel-texture tile covers
   metalness: number;
   roughness: number;
+  /** digital camouflage: patches built from square blocks this many metres across (absent = soft-edged patches) */
+  pixel?: number;
+  /** 0..1: how strongly the body along the centre line takes the dark tone (a darker spine and fuselage) */
+  core?: number;
+  /** patch size relative to the default (1); smaller = tighter patches */
+  scale?: number;
+  /** contrast of the panel-to-panel shading and grime (1 default; lower = a cleaner, more even coating) */
+  tone?: number;
+  /** depth of the panel seams (1 default; lower = fainter lines) */
+  seam?: number;
+  /** colour of edge treatments (the lighter bands along leading edges, tips and trailing edges); tag meshes 'edge' */
+  edge?: string;
 }
 
 /** colour an emissive (lamp) material takes in the real style; 'nav' = red on the port (+x) side, green starboard */

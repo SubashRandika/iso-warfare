@@ -10,6 +10,7 @@ import type { SkinSpec } from './types';
 const SKIN_VERT_HEAD = /* glsl */`varying vec3 vObjPos; varying vec3 vObjNrm;\n`;
 const SKIN_FRAG_HEAD = /* glsl */`
 uniform sampler2D uSkin; uniform float uTile; uniform vec3 uLight; uniform vec3 uDark; uniform float uCamo; uniform float uBump;
+uniform float uPixel; uniform float uCore; uniform float uScale; uniform float uTone; uniform float uSeam;
 varying vec3 vObjPos; varying vec3 vObjNrm;
 vec4 triSkin(vec3 p, vec3 n) {
   vec3 w = pow(abs(normalize(n)), vec3(4.0)); w /= (w.x + w.y + w.z + 1e-5);
@@ -36,7 +37,8 @@ export function skinMaterial(tex: THREE.Texture, s: SkinSpec) {
   const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: s.metalness, roughness: s.roughness, clearcoat: 0.12, clearcoatRoughness: 0.5 });
   const u = {
     uSkin: { value: tex }, uTile: { value: s.panel }, uLight: { value: new THREE.Color(s.light) }, uDark: { value: new THREE.Color(s.dark) },
-    uCamo: { value: s.camo }, uBump: { value: 0.45 },
+    uCamo: { value: s.camo }, uBump: { value: 0.45 }, uPixel: { value: s.pixel ?? 0 }, uCore: { value: s.core ?? 0 }, uScale: { value: s.scale ?? 1 },
+    uTone: { value: s.tone ?? 1 }, uSeam: { value: s.seam ?? 1 },
   };
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, u);
@@ -44,18 +46,44 @@ export function skinMaterial(tex: THREE.Texture, s: SkinSpec) {
     sh.fragmentShader = SKIN_FRAG_HEAD + sh.fragmentShader
       .replace('#include <color_fragment>', /* glsl */`#include <color_fragment>
         vec4 sk = triSkin(vObjPos, vObjNrm);
-        float camo = smoothstep(0.46, 0.54, sFbm(vObjPos * vec3(0.17, 0.24, 0.13) + 3.1));
-        vec3 skBase = mix(uLight, uDark, camo * uCamo);
+        // camouflage: soft patches, or (uPixel > 0) patches snapped to square blocks; uCore darkens the centre line
+        vec3 cp = uPixel > 0.0 ? (floor(vObjPos / uPixel) + 0.5) * uPixel : vObjPos;
+        float coreMask = uCore * (1.0 - smoothstep(0.6, 2.4, abs(vObjPos.x)));
+        float field = sFbm(cp * vec3(0.17, 0.24, 0.13) / uScale + 3.1) + coreMask * 0.6;
+        if (uPixel > 0.0) field += (sHash(floor(vObjPos / uPixel)) - 0.5) * 0.14;   // ragged, pixel-scattered edges
+        float camo = uPixel > 0.0 ? step(0.5, field) : smoothstep(0.46, 0.54, field);
+        vec3 skBase = mix(uLight, uDark, camo * uCamo) * (1.0 - 0.22 * coreMask);
         float skTone = sk.g, skGrime = sk.b, skSeam = sk.r;
-        diffuseColor.rgb = skBase * (0.9 + (skTone - 0.5) * 0.62) * mix(1.0, 0.78, smoothstep(0.5, 0.9, skGrime)) * mix(0.35, 1.0, skSeam);`)
+        diffuseColor.rgb = skBase * (0.9 + (skTone - 0.5) * 0.62 * uTone) * mix(1.0, 0.78, smoothstep(0.5, 0.9, skGrime) * uTone) * mix(1.0 - 0.65 * uSeam, 1.0, skSeam);`)
       .replace('#include <roughnessmap_fragment>', /* glsl */`#include <roughnessmap_fragment>
-        roughnessFactor = clamp(roughnessFactor + (skTone - 0.5) * 0.4 + (skGrime - 0.5) * 0.22 + (1.0 - skSeam) * 0.35, 0.06, 1.0);`)
+        roughnessFactor = clamp(roughnessFactor + ((skTone - 0.5) * 0.4 + (skGrime - 0.5) * 0.22) * uTone + (1.0 - skSeam) * 0.35 * uSeam, 0.06, 1.0);`)
       .replace('#include <metalnessmap_fragment>', /* glsl */`#include <metalnessmap_fragment>
         metalnessFactor = clamp(metalnessFactor * mix(0.7, 1.15, skTone), 0.0, 1.0);`)
       .replace('#include <normal_fragment_maps>', /* glsl */`#include <normal_fragment_maps>
-        normal = perturbSkin(-vViewPosition, normal, vec2(dFdx(skSeam), dFdy(skSeam)) * uBump, faceDirection);`);
+        normal = perturbSkin(-vViewPosition, normal, vec2(dFdx(skSeam), dFdy(skSeam)) * uBump * uSeam, faceDirection);`);
   };
   m.customProgramCacheKey = () => 'iso-skin';
+  return m;
+}
+
+/**
+ * bare engine metal (titanium and steel around the nozzles): rings about 20 cm long along the model's z axis, each
+ * a slightly different shade between steel, heat-straw and heat-blue, with a dark seam between rings
+ */
+function metalMaterial() {
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.3 });
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = 'varying vec3 vObjPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vObjPos = position;');
+    sh.fragmentShader = 'varying vec3 vObjPos;\nfloat mHash(float n) { return fract(sin(n * 91.3458) * 47453.5453); }\n' + sh.fragmentShader
+      .replace('#include <color_fragment>', /* glsl */`#include <color_fragment>
+        float mBand = floor(vObjPos.z * 5.0), mT = fract(vObjPos.z * 5.0);
+        vec3 mCol = mix(vec3(0.64, 0.62, 0.58), vec3(0.76, 0.62, 0.42), mHash(mBand + 7.0) * 0.85);
+        mCol = mix(mCol, vec3(0.50, 0.52, 0.58), step(0.88, mHash(mBand + 13.0)) * 0.35);
+        diffuseColor.rgb = mCol * (0.8 + 0.2 * mHash(mBand)) * mix(0.5, 1.0, smoothstep(0.0, 0.05, mT) * smoothstep(1.0, 0.95, mT));`)
+      .replace('#include <roughnessmap_fragment>', /* glsl */`#include <roughnessmap_fragment>
+        roughnessFactor = clamp(roughnessFactor + (mHash(mBand + 3.0) - 0.5) * 0.24, 0.12, 0.8);`);
+  };
+  m.customProgramCacheKey = () => 'iso-metal';
   return m;
 }
 
@@ -66,7 +94,10 @@ export function realMaterials(tex: THREE.Texture, skin: SkinSpec) {
   const std = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(o);
   const mats = {
     skin: skinMaterial(tex, skin),
-    nozzle: skinMaterial(tex, { ...skin, light: '#5b5f62', dark: '#45494c', camo: 0.4, metalness: 0.7, roughness: 0.36 }),
+    nozzle: skinMaterial(tex, { ...skin, light: '#5b5f62', dark: '#45494c', camo: 0.4, metalness: 0.7, roughness: 0.36, pixel: 0, core: 0 }),
+    edge: skinMaterial(tex, { ...skin, light: skin.edge ?? skin.light, dark: skin.edge ?? skin.light, camo: 0, pixel: 0, core: 0 }),
+    metal: metalMaterial(),
+    radome: std({ color: 0xc8cbc8, roughness: 0.55, metalness: 0.05 }),             // light dielectric nose cone
     cockpit: std({ color: 0x24272b, roughness: 0.85, metalness: 0.1 }),
     intake: std({ color: 0x0d0e0f, roughness: 0.95 }),
     recess: std({ color: 0x1c1e20, roughness: 0.9 }),

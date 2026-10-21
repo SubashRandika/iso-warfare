@@ -63,8 +63,17 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   Reference: `lib/models/pistols/m17/model.ts` (also real-only stippling and serrations, a fireball muzzle flash, and
   spent cases that carry a hairline and a real version, switched in `onStyle`, since they are spawned at runtime).
 - Tag meshes with the material they become: `kit.add(parent, geo, mat, { real: 'strut' })`, `kit.well(…, 'bay')`.
-  Tags: skin, nozzle, cockpit, intake, recess, well, bay, exhaust, strut, tyre, store, seeker, canopy. Untagged body
-  meshes get the skin; `kit.wheel` and `missileGeo` tag themselves. Add a tag in `lib/real/materials.ts` if needed.
+  Tags: skin, edge (the skin in `SkinSpec.edge`, for lighter edge treatments), nozzle, metal (bare engine metal in
+  heat-tinted rings), radome, cockpit, intake, recess, well, bay,
+  exhaust, strut, tyre, store, seeker, canopy. Untagged body meshes get the skin; `kit.wheel` and `missileGeo` tag
+  themselves. Add a tag in `lib/real/materials.ts` if needed.
+- Paint: `SkinSpec` gives two tones and soft camouflage patches; `pixel` (block size in m) makes it digital, `core`
+  darkens the spine, `scale` sizes the patches, `tone` and `seam` set how strongly panels and seams show. The F-22
+  wears a clean silver-grey coating with soft darker patches, light edge bands (its leading-edge flaps are tagged
+  'edge', the rest are edge strips laid on the moving surfaces), small dark diamond panels and sawtooth bay-door
+  outlines; the Su-57 light grey with dark blue-grey pixel bands.
+  Match the paint to a photo of the real aircraft. Insignia, numbers and markings are real-only decals from
+  `lib/real/decals.ts`: a fine grid laid onto the skin with a cut-out canvas texture (see the F-22 and Su-57).
 - The skin needs no UVs (triplanar in model coordinates), so keep building meshes in model coordinates.
 - Afterburners and rocket motors: `makePlume(parent, at, dir, w, h, len, seed, kind)` from `lib/real/plume.ts`
   (`kind` 'ab' or 'dry': the jets show a faint dry plume whenever the engine runs, the afterburner on top); plumes are
@@ -74,7 +83,8 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   (ejection seat, panel with live displays, glareshield, HUD, consoles, stick, throttles) for its hairline boxes.
   The F-35B does the same with a panoramic display and no HUD, a sawtooth nozzle edge and real lift-fan blades.
 - Reference: the F-22 and F-35B (`lib/models/fighters/*/airframe.ts` tags + `real` block, `jet/sim.ts` builds the
-  spec). A plume parented to a moving part (the F-35B's swivel nozzle segment) turns with it.
+  spec). A plume parented to a moving part (the F-35B's swivel nozzle segment, the Su-57's vectoring nozzles) turns
+  with it. The Su-57 (`lib/models/fighters/su57/`) also shows all-moving fins, LEVCONs and tandem tunnel bays.
 
 ## Rules that keep the look and the behaviour consistent
 
