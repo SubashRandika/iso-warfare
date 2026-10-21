@@ -3,6 +3,8 @@
 // Switching it on swaps every hairline material in the model for a physically based one (by tag), smooths the
 // faceted normals except at real creases, hides the hairlines and glow halos, and keeps lamps lit in their real
 // colours. Switching off restores the hairline scene exactly. Loaded on demand by the host (lib/core/host.ts).
+// Aircraft stand on the apron; small arms get a shooting bench (lib/real/bench.ts). Sun distance, shadow depth and
+// bias and the fog all scale with the model's size, so a pistol and a fighter both get crisp shadows and a horizon.
 //
 // Light theme = midday, dark theme = dusk.
 import * as THREE from 'three';
@@ -13,6 +15,7 @@ import type { Engine } from '../iso/engine';
 import type { LampColor, RealSpec } from './types';
 import { concreteTextures, skinTexture } from './textures';
 import { LAMP_RGB, realMaterials, type RealMaterials, type RealTag } from './materials';
+import { buildBench } from './bench';
 
 const CREASE = 38 * Math.PI / 180;
 
@@ -22,12 +25,16 @@ const TIMES = {
 };
 
 type Swap = { mesh: THREE.Mesh; orig: THREE.Material | THREE.Material[]; real: THREE.Material; flatN?: THREE.BufferAttribute; smoothN?: THREE.BufferAttribute };
+/** a plain grey skin for the shared library when the model brings its own materials (no panel texture needed) */
+const PLAIN = { light: '#808080', dark: '#808080', camo: 0, panel: 4, metalness: 0.3, roughness: 0.5 };
 
 export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
-  const tex = skinTexture();
-  const M = realMaterials(tex, spec.skin);
+  const tex = skinTexture(spec.skin ? 2048 : 64);
+  const M = realMaterials(tex, spec.skin ?? PLAIN), own = spec.materials ?? {};
+  Object.values(own).forEach(m => { m.userData.realStyle = true; });
   const lampMats: [THREE.MeshStandardMaterial, THREE.MeshStandardMaterial, number][] = [];
   const S = spec.size, focus = spec.focus.clone();
+  const SUN = S * 12, FOG = Math.max(1, 16 / S);                    // sun distance; fog density gain for small models
 
   // ── world: sky, ground, markings ──
   const world = new THREE.Group(); world.visible = false; E.scene.add(world);
@@ -37,6 +44,8 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
   const groundMat = new THREE.MeshStandardMaterial({ map: conc.map, roughnessMap: conc.roughnessMap, bumpMap: conc.bumpMap, bumpScale: 1.2, roughness: 1, metalness: 0 });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(G, G).rotateX(-Math.PI / 2), groundMat);
   ground.position.set(focus.x, 0, focus.z); ground.receiveShadow = true; ground.raycast = () => {}; world.add(ground);
+  const bench = spec.bench ? buildBench(spec.bench) : null;
+  if (bench) { world.add(bench.group); ground.position.y = bench.floorY; }
   const paint = new THREE.MeshStandardMaterial({ color: 0xd9a21b, roughness: 0.62, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const edge = new THREE.MeshStandardMaterial({ color: 0x1b1a19, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const strip = (w: number, d: number, x: number, z: number, m: THREE.Material, y = 0.004) => {
@@ -52,8 +61,8 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
   const sun = E.lights.sun, sun0 = { pos: sun.position.clone(), col: sun.color.clone() };
   sun.shadow.mapSize.set(4096, 4096);
   const sc = sun.shadow.camera as THREE.OrthographicCamera;
-  sc.left = sc.bottom = -S * 1.4; sc.right = sc.top = S * 1.4; sc.near = 1; sc.far = 600; sc.updateProjectionMatrix();
-  sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.035; sun.shadow.radius = 3;
+  sc.left = sc.bottom = -S * 1.4; sc.right = sc.top = S * 1.4; sc.near = S * 0.05; sc.far = S * 32; sc.updateProjectionMatrix();
+  sun.shadow.bias = -0.0002; sun.shadow.normalBias = S * 0.0018; sun.shadow.radius = 3;
   E.scene.add(sun.target);
   const pmrem = new THREE.PMREMGenerator(E.renderer);
   const envScene = new THREE.Scene(), envSky = new Sky(); envSky.scale.setScalar(50); envScene.add(envSky);
@@ -77,11 +86,11 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
     }
     const s = E.scene;
     s.environment = envRT!.texture; s.environmentIntensity = T.env;   // the background colour stays: the sky draws over it
-    s.fog = new THREE.FogExp2(T.fog, T.fogD);
+    s.fog = new THREE.FogExp2(T.fog, T.fogD * FOG);
     E.renderer.toneMapping = THREE.ACESFilmicToneMapping; E.renderer.toneMappingExposure = T.exposure;
     E.lights.hemi.intensity = 0; E.lights.ambient.intensity = 0; E.lights.fill.intensity = 0;
     sun.color.set(T.sunCol); sun.intensity = T.sun; sun.castShadow = true;
-    sun.position.copy(focus).addScaledVector(dir, 220); sun.target.position.copy(focus); sun.target.updateMatrixWorld();
+    sun.position.copy(focus).addScaledVector(dir, SUN); sun.target.position.copy(focus); sun.target.updateMatrixWorld();
     bloom.strength = T.bloom;
   }
 
@@ -98,13 +107,15 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
     }
     return hit[1];
   };
-  const tagOf = (m: THREE.Mesh): RealTag | null => {
-    const t = (m.userData.real ?? m.geometry.userData.real) as RealTag | undefined;
-    if (t && t in M) return t;
+  /** the model's own material for a tag first, then the shared library; untagged hairline materials by kind */
+  const realOf = (m: THREE.Mesh): THREE.Material | null => {
+    const t = (m.userData.real ?? m.geometry.userData.real) as string | undefined;
+    if (t && own[t]) return own[t];
+    if (t && t in M) return M[t as RealTag];
     const o = m.material as THREE.Material;
-    if (o === E.mats.body) return 'skin';
-    if (o === E.mats.recess) return 'recess';
-    if (o === E.mats.glass) return 'canopy';
+    if (o === E.mats.body) return own.body ?? M.skin;
+    if (o === E.mats.recess) return own.recess ?? M.recess;
+    if (o === E.mats.glass) return own.canopy ?? M.canopy;
     return null;
   };
   function collect() {
@@ -117,7 +128,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
       let real: THREE.Material | null = null;
       const lc = lampOf.get(orig);
       if (lc) real = lampMat(orig, lc, m.position.x);
-      else { const t = tagOf(m); if (t) real = M[t]; }
+      else real = realOf(m);
       if (!real) return;                          // screens and anything unknown keep their material
       const sw: Swap = { mesh: m, orig: m.material, real };
       const g = m.geometry;
@@ -181,6 +192,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
       if (on) set(false);
       for (const h of hairs) h.visible = true;
       [tex, conc.map, conc.roughnessMap, conc.bumpMap].forEach(t => t.dispose());
+      bench?.dispose();
       Object.values(M).forEach(m => m.dispose());
       lampMats.forEach(([, r]) => r.dispose());
       envRT?.dispose(); pmrem.dispose(); bloom.dispose();

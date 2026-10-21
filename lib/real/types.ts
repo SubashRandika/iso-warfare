@@ -18,7 +18,18 @@ export interface SkinSpec {
 export type LampColor = 'red' | 'green' | 'white' | 'slime' | 'amber' | 'nav';
 
 export interface RealSpec {
-  skin: SkinSpec;
+  /** aircraft-style painted skin for untagged body meshes (triplanar, panel lines, camouflage) */
+  skin?: SkinSpec;
+  /**
+   * the model's own materials by tag, checked before the shared library (lib/real/materials.ts); `body` replaces the
+   * skin on untagged meshes. The model owns and disposes them.
+   */
+  materials?: Record<string, THREE.Material>;
+  /**
+   * small arms: a shooting bench with a rubber mat (w × d metres, centred on cx, cz, its top at y = 0, printed with the
+   * hairline plate's centimetre grid) instead of the apron; the concrete floor lies `height` below
+   */
+  bench?: { w: number; d: number; cx: number; cz: number; height?: number };
   /** hairline-only scenery to hide (aprons, plates, painted pads): the real style brings its own ground */
   hide?: THREE.Object3D[];
   /** hairline glow materials and the real colour each lamp becomes; brightness follows the hairline material */

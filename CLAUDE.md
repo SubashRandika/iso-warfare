@@ -55,7 +55,13 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 
 - Return `real: RealSpec` from the runtime (`lib/real/types.ts`): the skin paint (`SkinSpec`), `focus` and `size`
   for the shadow camera, hairline scenery to `hide`, `lamps` (hairline glow material → real colour; `'nav'` is red
-  on +x, green on −x), optional `markings`, `onStyle`, and `tick(now, mats)` for heat and plumes.
+  on +x, green on −x), optional `markings`, `onStyle`, and `tick(now, mats)` for heat and plumes. Sun distance,
+  shadow bias and fog scale with `size`, so the same stage works for a pistol and a fighter.
+- Models that aren't painted aircraft bring their own finishes: `materials: { polymer, nitride, … }` keyed by the tags
+  they use (`body` for untagged meshes); they own and dispose them. Small arms add `bench: { w, d, cx, cz }` (the
+  plate's size): a shooting bench with a printed rubber mat whose top is y = 0, the range floor below.
+  Reference: `lib/models/pistols/m17/model.ts` (also real-only stippling and serrations, a fireball muzzle flash, and
+  spent cases that carry a hairline and a real version, switched in `onStyle`, since they are spawned at runtime).
 - Tag meshes with the material they become: `kit.add(parent, geo, mat, { real: 'strut' })`, `kit.well(…, 'bay')`.
   Tags: skin, nozzle, cockpit, intake, recess, well, bay, exhaust, strut, tyre, store, seeker, canopy. Untagged body
   meshes get the skin; `kit.wheel` and `missileGeo` tag themselves. Add a tag in `lib/real/materials.ts` if needed.
@@ -81,7 +87,11 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   Light parts with `E.glowMat()` (+ `E.glowPoints` for the halo); the light theme turns them flat accent and hides
   glow automatically. Never hard-code a hue.
 - Every mesh goes through `kit.add` (silhouette + creases) unless it is a flat well/decal. Faceted, not smooth:
-  octagons and lofts read better than 32-segment cylinders.
+  octagons and lofts read better than 32-segment cylinders. Rounded edges are fine when each step turns less than
+  the 30° crease threshold (an extrude bevel in 4 segments, a loft corner in 4 steps): they then show only as
+  silhouette, and the Real view shades them smooth. Sharp single chamfers everywhere look boxy.
+- Trace side profiles from a true side photo at a known scale (overall length ÷ pixels) and say so in a comment;
+  draw the profiles back over the photo to check them (the M17 grip and slide came out 25–30 % too big by eye).
 - Keys: one letter per action, unique per model. Reserved by the host: I, T, M, H, Escape, [, ], /.
   The catalogue warns in dev about clashes and unknown parts.
 - Demos must survive slow or throttled frames: chain steps with `script.when(cond, f)` (wait until the model has
