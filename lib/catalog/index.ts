@@ -5,9 +5,11 @@ import { CATEGORIES, DOMAINS } from './categories';
 import { f22 } from '../models/fighters/f22/def';
 import { f35 } from '../models/fighters/f35/def';
 import { su57 } from '../models/fighters/su57/def';
+import { j20 } from '../models/fighters/j20/def';
+import { b2 } from '../models/bombers/b2/def';
 import { m17 } from '../models/pistols/m17/def';
 
-export const MODELS: ModelDef[] = [f22, f35, su57, m17];
+export const MODELS: ModelDef[] = [f22, f35, su57, j20, b2, m17];
 
 export { CATEGORIES, DOMAINS };
 export const DEFAULT_MODEL = 'f22';

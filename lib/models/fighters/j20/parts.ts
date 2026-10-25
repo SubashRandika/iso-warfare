@@ -1,0 +1,25 @@
+// J-20 part catalogue: names, what each part does on the real aircraft, and what clicking it does here.
+// Plain data so the UI can import it without pulling in three.js.
+
+import type { PartInfo } from '../../../catalog/types';
+
+export const DRAGON_PARTS: PartInfo[] = [
+  { id: 'radome', name: 'Radome & EOTS', text: 'The long, chined nose houses an active electronically scanned radar. The faceted window under the chin is the electro-optical targeting system, which finds and tracks targets by their heat without transmitting.' },
+  { id: 'canopy', name: 'Canopy & cockpit', click: 'opens or closes the canopy', text: 'A frameless, gold-tinted canopy hinged at the rear; the coating keeps radar energy out of the cockpit. Inside: an ejection seat, a wide-angle head-up display and large colour displays that light up when the jet has power, with a centre stick.' },
+  { id: 'intakes', name: 'Caret intakes (DSI)', click: 'starts or stops the engines', text: 'Two raked intakes on the fuselage sides with a diverterless supersonic inlet: the bump inside each mouth pushes the slow boundary-layer air aside without a splitter plate, which saves weight and hides the engine faces from radar.' },
+  { id: 'canards', name: 'All-moving canards', click: 'runs a deflection check', text: 'Large foreplanes on top of the intakes, each turning as a whole. With no horizontal tail, they share pitch control with the wing’s trailing edges and add lift and agility at high angles of attack.' },
+  { id: 'wings', name: 'Delta wing', text: 'A cropped delta with about 43° of leading-edge sweep and slight anhedral, blended into the body through wing-root extensions. The canard-delta layout favours speed, range and a large internal fuel load.' },
+  { id: 'lef', name: 'Leading-edge flaps', click: 'runs a deflection check', text: 'Full-span leading-edge flaps that droop for take-off, landing and hard manoeuvring.' },
+  { id: 'flaperons', name: 'Flaperons', click: 'runs a deflection check', text: 'Inboard trailing-edge surfaces that work as flaps and, with no tailplane, also help the canards with pitch.' },
+  { id: 'ailerons', name: 'Ailerons', click: 'runs a deflection check', text: 'Outboard trailing-edge surfaces for roll and, together with the flaperons, pitch.' },
+  { id: 'fins', name: 'All-moving vertical tails', click: 'swings the fins', text: 'Two canted fins on the engine shoulders, each turning as a whole on a pivot instead of carrying a rudder. Both turn together for yaw (Z and X keys here); for the speed brake (S) they splay apart while the canards tilt down and the wing surfaces split, since the jet has no airbrake panel.' },
+  { id: 'ventrals', name: 'Ventral fins', text: 'Two small fins under the engines, canted outward, that add directional stability at high speed and high angles of attack.' },
+  { id: 'nozzles', name: 'Engines & nozzles', click: 'toggles afterburner', text: 'Two afterburning turbofans set close together, with round nozzles whose petals end in a sawtooth edge to scatter radar returns from behind. Here the petals open wider with thrust and further in afterburner.' },
+  { id: 'gearNose', name: 'Nose gear', click: 'raises or lowers the gear', text: 'A steerable nose leg that retracts forward under the cockpit, closed in by two doors. It carries the taxi light.' },
+  { id: 'gearMain', name: 'Main gear', click: 'raises or lowers the gear', text: 'Single-wheel main legs that fold forward into bays in the lower fuselage sides, behind the side weapons bays.' },
+  { id: 'bayMain', name: 'Main weapons bay', click: 'opens or closes the main bay', text: 'A large bay under the fuselage behind the intakes, closed by two long doors. It carries long-range air-to-air missiles internally to keep the radar signature low; here four of them drop clear of the doors on launchers.' },
+  { id: 'baySide', name: 'Side weapons bays', click: 'opens or closes the side bays', text: 'A narrow bay in each side of the fuselage behind the intake, each for one short-range missile. A trapeze swings the missile out into the airflow so its seeker can lock on before launch, as in photographs of the aircraft.' },
+  { id: 'refuel', name: 'Refuelling probe', click: 'extends or stows the probe', text: 'A retractable probe on the right side of the nose, ahead of the canopy, for probe-and-drogue air-to-air refuelling. It lies flush with the skin until it is needed.' },
+  { id: 'lights', name: 'Formation & nav lights', click: 'switches the lights', text: 'Formation light strips on the nose, rear fuselage and wingtips, position lights at the wingtips and flashing anti-collision beacons above and below.' },
+  { id: 'airframe', name: 'Airframe', text: 'Single-seat, twin-engine stealth fighter, about 20.4 m long with a 12.9 m span: one of the largest fighters in service. Its long body holds a lot of fuel and weapons internally, for long-range interception of high-value aircraft such as tankers and airborne early-warning jets.' },
+];

@@ -4,7 +4,7 @@ import type { ModelFactory } from '../core/types';
 
 export type DomainId = 'air' | 'land' | 'sea' | 'strike' | 'small-arms';
 export type CategoryId =
-  | 'fighters'
+  | 'fighters' | 'bombers'
   | 'pistols' | 'rifles' | 'sniper-rifles' | 'machine-guns'
   | 'tanks' | 'trucks'
   | 'missiles' | 'launchers'

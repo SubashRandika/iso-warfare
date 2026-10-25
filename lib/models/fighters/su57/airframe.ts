@@ -276,7 +276,7 @@ export function buildFelon(E: Engine): JetRig {
   const NGS = 6.6, NGY = bellyY(NGS);
   const noseGear = hinge(pNG, P(0, NGY, NGS), X, 'x');
   add(noseGear.inner, merge([cyl(0.06, 0.62, NGY, 0, NGS), cyl(0.08, 0.36, 0.95, 0, NGS), box(-0.2, 0.2, 0.3, 0.36, NGS - 0.05, NGS + 0.05), brace(P(0, 0.62, NGS + 0.03), P(0, 1.1, NGS + 0.2), 0.026)]), undefined, { real: 'strut' });
-  for (const x of [-0.17, 0.17]) add(noseGear.inner, wheel(0.33, 0.18, x, 0.33, NGS));
+  for (const x of [-0.17, 0.17]) wheel(noseGear.inner, 0.33, 0.18, x, 0.33, NGS);
   const taxiGlow = K.taxiLight(noseGear.inner, P(0, 1.0, NGS - 0.1));
   const noseDoor: Hinge[] = [];
   for (const k of SIDES) {
@@ -293,7 +293,7 @@ export function buildFelon(E: Engine): JetRig {
     const x = k * MGX;
     mainGear[k] = hinge(pMG, P(x, MGY, MGS), X, 'x');
     add(mainGear[k].inner, merge([cyl(0.08, 0.72, MGY, x, MGS), cyl(0.1, 0.43, 1.15, x, MGS), box(x - 0.2 * k - 0.04, x - 0.2 * k + 0.04, 0.39, 0.47, MGS - 0.05, MGS + 0.05), brace(P(x, 1.3, MGS), P(k * 1.95, 2.05, MGS - 0.5), 0.036)]), undefined, { real: 'strut' });
-    add(mainGear[k].inner, wheel(0.43, 0.3, x + k * 0.03, 0.43, MGS));
+    wheel(mainGear[k].inner, 0.43, 0.3, x + k * 0.03, 0.43, MGS);
     const y = 2.17;
     mainDoor[k] = hinge(pMG, P(k * 2.55, y, MGS), Z, 'z');
     add(mainDoor[k].inner, slab([{ le: P(k * 2.55, y, 10.6), te: P(k * 2.0, y, 10.6), t: 0.025 }, { le: P(k * 2.55, y, 13.2), te: P(k * 2.0, y, 13.2), t: 0.025 }], UP, PLATE).build());

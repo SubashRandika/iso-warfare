@@ -12,7 +12,7 @@ import type { JetRig, JetState } from './types';
 
 const MONO = 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace';
 
-export interface JetOptions { refuelReadout: string }
+export interface JetOptions { refuelReadout: string; /** what the readout calls the canopy (a bomber has a crew hatch) */ canopyWord?: string }
 
 export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelFactory {
   return ({ E, snd, script, say, wig, has }) => {
@@ -51,7 +51,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
         st.ab = !st.ab; snd.button();
       },
       lights() { st.lights = !st.lights; snd.button(); },
-      canopy() { if (airborne()) return say('canopy locked in flight'); st.canopy = !st.canopy; snd.motor(2.4, st.canopy); },
+      canopy() { if (airborne()) return say(`${opts.canopyWord ?? 'canopy'} locked in flight`); st.canopy = !st.canopy; snd.motor(2.4, st.canopy); },
       stovl() {
         if (!has('stovl')) return;
         if (airborne()) return say('land first');
@@ -62,7 +62,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
         const ready = () => {
           if (!st.eng) { say(`start ${engWord} first`); return false; }
           if (st.rpm < 0.9) { say('wait for spool-up'); return false; }
-          if (st.canopyT > 0) { say('close the canopy first'); return false; }
+          if (st.canopyT > 0) { say(`close the ${opts.canopyWord ?? 'canopy'} first`); return false; }
           return true;
         };
         if (st.stovl) {                               // STOVL: lift straight up into the hover, gear stays down
@@ -104,7 +104,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
           later(10200, () => when(ready, () => {
             if (st.gear) act.gear();
             when(() => st.alt >= ALT_MAX - 0.05, () => {
-              if (!st.ab) act.afterburner();
+              if (!st.ab && has('afterburner')) act.afterburner();
               later(1400, () => { st.auto.roll = 1; });
               later(2700, () => { st.auto.roll = -1; });
               later(4000, () => { st.auto.roll = 0; });
@@ -135,8 +135,9 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       sx.fillStyle = A; sx.strokeStyle = A; sx.font = `600 18px ${MONO}`; sx.textBaseline = 'top';
       // engines
       sx.fillText(R.engines > 1 ? 'ENG' : 'F135', 18, 16);
-      for (let i = 0; i < R.engines; i++) { const x = 30 + i * 48, h = (H - 70) * st.rpm; sx.strokeRect(x, 44, 26, H - 70); sx.fillRect(x, 44 + (H - 70) - h, 26, h); }
-      sx.fillText(`${Math.round(st.rpm * 100)}%`, 120, 60);
+      const bw = R.engines > 2 ? 16 : 26, gap = R.engines > 2 ? 22 : 48;
+      for (let i = 0; i < R.engines; i++) { const x = 30 + i * gap, h = (H - 70) * st.rpm; sx.strokeRect(x, 44, bw, H - 70); sx.fillRect(x, 44 + (H - 70) - h, bw, h); }
+      sx.fillText(`${Math.round(st.rpm * 100)}%`, 30 + R.engines * gap + 8, 60);
       if (st.abT > 0.5) { sx.fillRect(118, 100, 44, 26); sx.fillStyle = bg; sx.fillText('AB', 128, 104); sx.fillStyle = A; }
       // attitude
       const cx = pw * 1.5, cy = H / 2;
@@ -167,9 +168,9 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       const X = R.real, aft = new THREE.Vector3(0, 0, -1);
       const plumes = X.nozzles.map((n, i) => makePlume(n.parent, n.at, aft, n.w, n.h, 10, i));
       const dry = X.nozzles.map((n, i) => makePlume(n.parent, n.at, aft, n.w * 0.92, n.h * 0.92, 5, i + 5, 'dry'));
-      const mid = X.nozzles.reduce((a, n) => a.add(n.at), new THREE.Vector3()).divideScalar(X.nozzles.length);
+      const mid = X.nozzles.reduce((a, n) => a.add(n.at), new THREE.Vector3()).divideScalar(Math.max(1, X.nozzles.length));
       const abLight = new THREE.PointLight(0xff7a2e, 0, 0, 2); abLight.position.copy(mid).add(new THREE.Vector3(0, -0.2, -2.2));
-      X.nozzles[0].parent.add(abLight);
+      (X.nozzles[0]?.parent ?? R.craft).add(abLight);
       real = {
         skin: X.skin, focus: X.focus, size: X.size, markings: { stopZ: X.stopZ }, hide: R.stage ? [R.stage] : [], only: X.only,
         lamps: [[L.stripMat, 'slime'], [L.navMat, 'nav'], [L.beaconMat, 'red'], [L.taxiMat, 'white']],
@@ -259,7 +260,8 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
         if (st.hover || st.stovl) p.push(st.alt >= HOVER - 0.01 && st.hover ? 'hovering' : st.hover ? 'lifting' : 'descending');
         else p.push(st.alt >= ALT_MAX - 0.01 ? 'airborne' : st.gear ? 'landing' : 'climbing');
       }
-      p.push(st.canopyT >= 1 ? 'canopy open' : st.canopyT <= 0 ? 'canopy shut' : 'canopy moving');
+      const cw = opts.canopyWord ?? 'canopy';
+      p.push(st.canopyT >= 1 ? `${cw} open` : st.canopyT <= 0 ? `${cw} shut` : `${cw} moving`);
       if (st.bayMain || st.baySide) p.push(st.bayMain && st.baySide ? 'bays open' : st.bayMain ? 'main bay open' : 'side bays open');
       if (st.brake) p.push('speed brake');
       if (st.refuel) p.push(opts.refuelReadout);

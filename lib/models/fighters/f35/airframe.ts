@@ -309,7 +309,7 @@ export function buildLightning(E: Engine): JetRig {
   const NGS = 3.6, NGY = bellyY(NGS);
   const noseGear = hinge(pNG, P(0, NGY, NGS), X, 'x');
   add(noseGear.inner, merge([cyl(0.05, 0.55, NGY, 0, NGS), cyl(0.068, 0.32, 0.76, 0, NGS), box(-0.12, 0.12, 0.29, 0.35, NGS - 0.05, NGS + 0.05), brace(P(0, 0.55, NGS + 0.03), P(0, 0.9, NGS + 0.15), 0.022)]), undefined, { real: 'strut' });
-  add(noseGear.inner, wheel(0.32, 0.18, 0, 0.32, NGS));
+  wheel(noseGear.inner, 0.32, 0.18, 0, 0.32, NGS);
   const taxiGlow = K.taxiLight(noseGear.inner, P(0, 0.88, NGS - 0.08));
   const noseDoor: Hinge[] = [];
   for (const k of SIDES) {
@@ -324,7 +324,7 @@ export function buildLightning(E: Engine): JetRig {
     const x = k * 1.55;
     mainGear[k] = hinge(pMG, P(x, MGY, MGS), X, 'x');
     add(mainGear[k].inner, merge([cyl(0.07, 0.62, MGY, x, MGS), cyl(0.088, 0.36, 0.95, x, MGS), box(x - 0.18 * k - 0.04, x - 0.18 * k + 0.04, 0.33, 0.4, MGS - 0.05, MGS + 0.05), brace(P(x, 1.12, MGS), P(k * 1.22, 1.78, MGS - 0.45), 0.032)]), undefined, { real: 'strut' });
-    add(mainGear[k].inner, wheel(0.36, 0.26, x + k * 0.02, 0.36, MGS));
+    wheel(mainGear[k].inner, 0.36, 0.26, x + k * 0.02, 0.36, MGS);
     const y = 1.85;
     mainDoor[k] = hinge(pMG, P(k * 1.85, y, MGS), Z, 'z');
     add(mainDoor[k].inner, slab([8.2, 10.2].map(s => ({ le: P(k * 1.85, y, s), te: P(k * 1.3, y, s), t: 0.025 })), up, PLATE).build());

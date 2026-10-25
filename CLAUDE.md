@@ -8,6 +8,9 @@ every listed part does something. Built with the `/iso-glow` and `/threejs` skil
 
 `npm run dev -- -p 3210` · `npx tsc --noEmit` · `npx next build` · `npm run new:model -- <category> <id> "<Name>"`
 
+Don't run `next build` while the dev server is up: it breaks the dev server's next/font (500s). Stop the server, delete
+`.next/dev`, restart.
+
 ## Layout
 
 ```
@@ -65,7 +68,7 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - Tag meshes with the material they become: `kit.add(parent, geo, mat, { real: 'strut' })`, `kit.well(…, 'bay')`.
   Tags: skin, edge (the skin in `SkinSpec.edge`, for lighter edge treatments), nozzle, metal (bare engine metal in
   heat-tinted rings), radome, cockpit, intake, recess, well, bay,
-  exhaust, strut, tyre, store, seeker, canopy. Untagged body meshes get the skin; `kit.wheel` and `missileGeo` tag
+  exhaust, strut, tyre, rim, store, seeker, canopy. Untagged body meshes get the skin; `kit.wheel` (tyre on rim) and `missileGeo` tag
   themselves. Add a tag in `lib/real/materials.ts` if needed.
 - Paint: `SkinSpec` gives two tones and soft camouflage patches; `pixel` (block size in m) makes it digital, `core`
   darkens the spine, `scale` sizes the patches, `tone` and `seam` set how strongly panels and seams show. The F-22
@@ -85,6 +88,16 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - Reference: the F-22 and F-35B (`lib/models/fighters/*/airframe.ts` tags + `real` block, `jet/sim.ts` builds the
   spec). A plume parented to a moving part (the F-35B's swivel nozzle segment, the Su-57's vectoring nozzles) turns
   with it. The Su-57 (`lib/models/fighters/su57/`) also shows all-moving fins, LEVCONs and tandem tunnel bays.
+  The J-20 (`lib/models/fighters/j20/`) is a canard-delta: all-moving canards on the intake tops share pitch with the
+  wing's trailing edges (no tailplane, no airbrake panel: the speed brake tilts the canards and splays the fins), caret
+  DSI intakes with the bump inside each mouth, ventral fins, serrated nozzles, one wide ventral bay and side-bay
+  trapezes; in Real, light grey edge bands on every surface and low-visibility insignia.
+  The B-2 (`lib/models/bombers/b2/`) reuses the jet sim for a flying wing: a wing lofted by span stations, elevons,
+  split drag rudders, a crew hatch instead of a canopy (`canopyWord`), rotary-launcher bomb bays, no afterburner
+  (the demo only lights one when the def lists the action) and no plumes at all (`nozzles: []`: its troughs hide
+  the exhaust). Its trailing edge runs at ±33° in every segment (constant-chord outer panels, tips level with the
+  tail), and its crown and humps use a (1 − u²)ⁿ cross-section so they fade into the wing instead of sitting on it.
+  Light grey seams and the tiled troughs are real-only ribbons and decals.
 
 ## Rules that keep the look and the behaviour consistent
 

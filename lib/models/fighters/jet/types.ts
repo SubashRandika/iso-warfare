@@ -38,7 +38,7 @@ export interface JetRig {
   /** opt in to the realistic style: paint, framing, and where the afterburner plumes leave the nozzles */
   real?: {
     skin: SkinSpec; focus: THREE.Vector3; size: number; stopZ: number;
-    nozzles: { parent: THREE.Object3D; at: THREE.Vector3; w: number; h: number }[];
+    nozzles: { parent: THREE.Object3D; at: THREE.Vector3; w: number; h: number }[];   // empty: no plumes (the B-2)
     /** pieces that exist in one style only (the Real view swaps in a detailed cockpit) */
     only?: { line: THREE.Object3D[]; real: THREE.Object3D[] };
     /** cockpit power 0..1 (HUD symbology) */

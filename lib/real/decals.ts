@@ -38,3 +38,17 @@ export function starPath(x: CanvasRenderingContext2D, cx: number, cy: number, r:
   for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.382 : r; x.lineTo(cx + rr * Math.cos(a), cy + rr * Math.sin(a)); }
   x.closePath();
 }
+
+/** US star-and-bar in low-visibility style (outlines only, one grey), 512 × 256, bars along the texture's width */
+export function lowVisStarAndBar(colour: string) {
+  return decalTexture(512, 256, x => {
+    x.strokeStyle = colour; x.lineJoin = 'miter'; x.lineWidth = 7;
+    const r = 78, cy = 128, half = 26, edge = Math.sqrt(r * r - half * half);
+    x.beginPath(); x.arc(256, cy, r, 0, Math.PI * 2); x.stroke();
+    starPath(x, 256, cy, r - 4); x.stroke();
+    for (const d of [-1, 1]) {
+      x.beginPath(); x.moveTo(256 + d * edge, cy - half); x.lineTo(256 + d * (r + 112), cy - half); x.lineTo(256 + d * (r + 112), cy + half); x.lineTo(256 + d * edge, cy + half); x.stroke();
+      x.lineWidth = 4; x.strokeRect(d > 0 ? 256 + r + 10 : 256 - r - 102, cy - 8, 92, 16); x.lineWidth = 7;
+    }
+  });
+}

@@ -8,7 +8,7 @@ import { makeKit, DEG, SIDES, PLATE, ease, clamp01 } from '../jet/kit';
 import { buildApron } from '../../../stages/apron';
 import type { Hinge, JetRig, JetState } from '../jet/types';
 import { cockpitMaterials, cockpitMesh, consoleBox, ejectionSeat, glareshield, hud, instrumentPanel, sideStick, throttles } from '../jet/cockpit';
-import { decalMaterial, decalTexture, layDecal, profileAt, starPath } from '../../../real/decals';
+import { decalMaterial, decalTexture, layDecal, lowVisStarAndBar, profileAt } from '../../../real/decals';
 
 type V = THREE.Vector3;
 const NOSE_Z = 9.45;
@@ -261,7 +261,7 @@ export function buildRaptor(E: Engine): JetRig {
   const NGS = 4.6;
   const noseGear = hinge(pNG, P(0, 1.45, NGS), new THREE.Vector3(1, 0, 0), 'x');
   add(noseGear.inner, merge([cyl(0.055, 0.62, 1.45, 0, NGS), cyl(0.075, 0.36, 0.86, 0, NGS), box(-0.14, 0.14, 0.33, 0.39, NGS - 0.06, NGS + 0.06), brace(P(0, 0.62, NGS + 0.03), P(0, 1.0, NGS + 0.16), 0.025)]), undefined, { real: 'strut' });
-  add(noseGear.inner, wheel(0.36, 0.2, 0, 0.36, NGS));
+  wheel(noseGear.inner, 0.36, 0.2, 0, 0.36, NGS);
   const taxiGlow = K.taxiLight(noseGear.inner, P(0, 1.0, NGS - 0.09));
   const noseDoor: Hinge[] = [];
   for (const k of SIDES) {
@@ -278,7 +278,7 @@ export function buildRaptor(E: Engine): JetRig {
     const x = k * 1.62;
     mainGear[k] = hinge(pMG, P(x, MGY, MGS), new THREE.Vector3(1, 0, 0), 'x');
     add(mainGear[k].inner, merge([cyl(0.075, 0.7, MGY, x, MGS), cyl(0.095, 0.42, 1.05, x, MGS), box(x - 0.2 * k - 0.04, x - 0.2 * k + 0.04, 0.38, 0.46, MGS - 0.05, MGS + 0.05), brace(P(x, 1.25, MGS), P(k * 1.32, 2.0, MGS - 0.5), 0.035)]), undefined, { real: 'strut' });
-    add(mainGear[k].inner, wheel(0.42, 0.28, x + k * 0.02, 0.42, MGS));
+    wheel(mainGear[k].inner, 0.42, 0.28, x + k * 0.02, 0.42, MGS);
     const y = 2.115;
     mainDoor[k] = hinge(pMG, P(k * 1.9, y, MGS), new THREE.Vector3(0, 0, 1), 'z');
     add(mainDoor[k].inner, slab([{ le: P(k * 1.9, y, 10.3), te: P(k * 1.38, y, 10.3), t: 0.025 }, { le: P(k * 1.9, y, 12.5), te: P(k * 1.38, y, 12.5), t: 0.025 }], new THREE.Vector3(0, 1, 0), PLATE).build());
@@ -344,16 +344,7 @@ export function buildRaptor(E: Engine): JetRig {
   // ═════ Real view only: low-visibility markings laid onto the skin ═════
   const decals: THREE.Mesh[] = [];
   const GREY = '#565b5e';
-  const insignia = decalTexture(512, 256, x => {                    // star-and-bar, outlines only (low-visibility)
-    x.strokeStyle = GREY; x.lineJoin = 'miter'; x.lineWidth = 7;
-    const r = 78, cy = 128, half = 26, edge = Math.sqrt(r * r - half * half);
-    x.beginPath(); x.arc(256, cy, r, 0, Math.PI * 2); x.stroke();
-    starPath(x, 256, cy, r - 4); x.stroke();
-    for (const d of [-1, 1]) {
-      x.beginPath(); x.moveTo(256 + d * edge, cy - half); x.lineTo(256 + d * (r + 112), cy - half); x.lineTo(256 + d * (r + 112), cy + half); x.lineTo(256 + d * edge, cy + half); x.stroke();
-      x.lineWidth = 4; x.strokeRect(d > 0 ? 256 + r + 10 : 256 - r - 102, cy - 8, 92, 16); x.lineWidth = 7;
-    }
-  });
+  const insignia = lowVisStarAndBar(GREY);                           // star-and-bar, outlines only (low-visibility)
   const slipway = decalTexture(128, 512, x => {                     // refuelling slipway ahead of the receptacle
     x.fillStyle = GREY;
     x.beginPath(); x.moveTo(30, 0); x.lineTo(42, 0); x.lineTo(16, 512); x.lineTo(4, 512); x.fill();

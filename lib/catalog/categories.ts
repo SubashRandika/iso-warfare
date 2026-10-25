@@ -12,6 +12,7 @@ export const DOMAINS: Domain[] = [
 
 export const CATEGORIES: Category[] = [
   { id: 'fighters', domain: 'air', name: 'Fighter jets', one: 'fighter' },
+  { id: 'bombers', domain: 'air', name: 'Bombers', one: 'bomber' },
   { id: 'tanks', domain: 'land', name: 'Tanks', one: 'tank' },
   { id: 'trucks', domain: 'land', name: 'Military trucks', one: 'truck' },
   { id: 'warships', domain: 'sea', name: 'Warships', one: 'warship' },

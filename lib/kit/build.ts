@@ -45,11 +45,34 @@ export function makeKit(E: Engine, o: { P?: Frame; unit?: number; root?: THREE.O
   const cyl = (r: number, b0: number, b1: number, a: number, c: number, seg = 12) => {
     const g = new THREE.CylinderGeometry(r, r, Math.abs(b1 - b0), seg); const p = P(a, (b0 + b1) / 2, c); g.translate(p.x, p.y, p.z); return g;
   };
-  /** wheel turning about x (tyre plus hub) */
-  const wheel = (r: number, w: number, a: number, b: number, c: number) => {
-    const t = new THREE.CylinderGeometry(r, r, w, 22); t.rotateZ(Math.PI / 2);
-    const h = new THREE.CylinderGeometry(r * 0.5, r * 0.5, w + 0.05 * unit, 12); h.rotateZ(Math.PI / 2);
-    const g = merge([t, h]); const p = P(a, b, c); g.translate(p.x, p.y, p.z); g.userData.real = 'tyre'; return g;
+  /** a profile of (radius, axial) points revolved about x, centred at P(a, b, c), with flat normals */
+  const lathe = (pts: [number, number][], seg: number, a: number, b: number, c: number) => {
+    const g = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg).toNonIndexed();
+    g.rotateZ(-Math.PI / 2); const p = P(a, b, c); g.translate(p.x, p.y, p.z); g.computeVertexNormals(); return g;
+  };
+  /**
+   * wheel turning about x, radius r, width w: a rubber tyre (rounded sidewalls and shoulders, circumferential tread
+   * grooves) on a metal rim (flange lips, a dished disc, hub cap and a bolt circle), as two meshes in `parent`
+   */
+  const wheel = (parent: THREE.Object3D, r: number, w: number, a: number, b: number, c: number) => {
+    const h = w / 2, bead = r * 0.6, d = r * 0.025;
+    // tyre cross-section from one bead round the tread to the other: each corner turns less than the crease threshold,
+    // so only the grooves draw hairlines
+    const side: [number, number][] = [[bead, 0.8], [r * 0.7, 0.97], [r * 0.8, 1], [r * 0.89, 0.96], [r * 0.95, 0.86], [r * 0.985, 0.72], [r, 0.56]];
+    const tread: [number, number][] = [[r, 0.3], [r - d, 0.28], [r - d, 0.18], [r, 0.16]];
+    const half = [...side, ...tread];
+    const prof = [...half.map(([q, y]) => [q, -y * h] as [number, number]), ...half.reverse().map(([q, y]) => [q, y * h] as [number, number])];
+    const tyre = lathe(prof, 32, a, b, c); tyre.userData.real = 'tyre';
+    add(parent, tyre);
+    // rim: inner face → flange → across the barrel → flange → outer face, ending at the hub cap
+    const face: [number, number][] = [[0, 0.72], [r * 0.15, 0.72], [r * 0.19, 0.58], [r * 0.38, 0.46], [r * 0.5, 0.54], [bead + r * 0.05, 0.86], [bead + r * 0.05, 0.79], [bead, 0.75]];
+    const rimP = [...face.map(([q, y]) => [q, -y * h] as [number, number]), ...face.slice().reverse().map(([q, y]) => [q, y * h] as [number, number])];
+    const bolts = Array.from({ length: 6 }, (_, i) => {
+      const t = i / 6 * Math.PI * 2, q = new THREE.CylinderGeometry(r * 0.025, r * 0.025, w * 0.08, 6); q.rotateZ(Math.PI / 2);
+      q.translate(h * 0.5, r * 0.28 * Math.cos(t), r * 0.28 * Math.sin(t)); const p = P(a, b, c); q.translate(p.x, p.y, p.z); return q.toNonIndexed();
+    });
+    const rim = merge([lathe(rimP, 24, a, b, c), ...bolts, ...bolts.map(q => q.clone().translate(-h, 0, 0))]); rim.userData.real = 'rim';
+    add(parent, rim, undefined, { minLen: 0.02 * unit });
   };
   /** round bar between two three.js points */
   const brace = (a: V, b: V, r: number, seg = 8) => {
