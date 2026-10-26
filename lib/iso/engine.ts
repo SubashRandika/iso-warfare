@@ -32,6 +32,16 @@ const THEMES = {
 
 export interface ViewSpec { target: THREE.Vector3; dir: THREE.Vector3; dist: () => number; min?: number; max?: number }
 type Tick = (now: number, dt: number) => void;
+/** a first-person view (a pilot's eye): the model places the head each frame, the viewer can look round from there */
+export interface EyeSpec {
+  fov: number; near: number; far: number;
+  /** the head's world position and orientation this frame (looking down −z, as cameras do) */
+  pose(pos: THREE.Vector3, quat: THREE.Quaternion): void;
+  /** after the camera is placed, before the frame is drawn: for displays carried by the head */
+  frame?(cam: THREE.PerspectiveCamera, dt: number): void;
+  /** the engine left the view by itself (the iso view was asked for) */
+  exit?(): void;
+}
 type Pick = (part: string | null, hit: THREE.Intersection | null) => void;
 
 const NOISE = `float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }`;
@@ -56,6 +66,9 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 600);
   let orthoH = 10;
   let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = persp;
+  // the first-person camera has its own projection, so the orbit camera keeps its place (and keeps tracking) meanwhile
+  const eyeCam = new THREE.PerspectiveCamera(60, vw / vh, 0.1, 1000);
+  let eye: EyeSpec | null = null;
   const controls = new OrbitControls(camera as THREE.Camera, renderer.domElement);
   controls.enableDamping = true;
   controls.zoomToCursor = true;                       // scroll toward what is under the pointer (cockpits, bays)
@@ -358,12 +371,13 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
       persp.position.copy(controls.target).add(ortho.position.clone().sub(controls.target).setLength(d));
       persp.quaternion.copy(ortho.quaternion); camera = persp;
     }
-    controls.object = camera; renderPass.camera = camera; controls.update(); appliedKey = '';
+    controls.object = camera; renderPass.camera = eye ? eyeCam : camera; controls.update(); appliedKey = '';
     glowMats.forEach(m => { m.uniforms.ortho.value = on ? 1 : 0; });
     emit();
   }
   /** Iso view: snap to the true isometric angle in orthographic; again: back to perspective at the same angle. */
   function toggleIso() {
+    if (eye) { const s = eye; setEye(null); s.exit?.(); }
     if (camera === ortho) { setOrtho(false); return; }
     camAnim = { from: camera.position.clone(), fromT: controls.target.clone(), t: 0, spin: controls.autoRotate };
     setSpin(false);
@@ -380,6 +394,41 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     controls.target.add(d); persp.position.add(d); ortho.position.add(d); view.target.add(d);
     if (camAnim) { camAnim.from.add(d); camAnim.fromT.add(d); }
   }
+  // ── first-person view: drag looks round from where the model puts the head (easing back after a pause), wheel zooms ──
+  const look = { yaw: 0, pitch: 0, idle: 0, fov: 60, drag: null as null | { x: number; y: number } };
+  const eyeQ = new THREE.Quaternion(), lookQ = new THREE.Quaternion(), lookE = new THREE.Euler(0, 0, 0, 'YXZ');
+  function setEye(s: EyeSpec | null) {
+    if (s === eye) return;
+    eye = s; look.yaw = look.pitch = 0; look.drag = null; look.idle = 0;
+    if (s) { look.fov = eyeCam.fov = s.fov; eyeCam.near = s.near; eyeCam.far = s.far; eyeCam.aspect = vw / vh; eyeCam.updateProjectionMatrix(); }
+    controls.enabled = !s;
+    renderPass.camera = s ? eyeCam : camera;
+    emit();
+  }
+  function placeEye(dt: number) {
+    const s = eye!;
+    s.pose(eyeCam.position, eyeQ);
+    if (!look.drag && (look.idle += dt) > 2.5) { const k = Math.min(1, dt * 1.6); look.yaw -= look.yaw * k; look.pitch -= look.pitch * k; }
+    lookQ.setFromEuler(lookE.set(look.pitch, look.yaw, 0));
+    eyeCam.quaternion.copy(eyeQ).multiply(lookQ);
+    if (eyeCam.fov !== look.fov) { eyeCam.fov = look.fov; eyeCam.updateProjectionMatrix(); }
+    eyeCam.updateMatrixWorld();
+    s.frame?.(eyeCam, dt);
+  }
+  const onEyeMove = (e: PointerEvent) => {
+    if (!eye || !look.drag) return;
+    const k = THREE.MathUtils.degToRad(look.fov) / vh;          // one pixel of drag turns the view by one pixel's angle
+    look.yaw = THREE.MathUtils.clamp(look.yaw + (e.clientX - look.drag.x) * k, -2.4, 2.4);
+    look.pitch = THREE.MathUtils.clamp(look.pitch + (e.clientY - look.drag.y) * k, -1.2, 1.3);
+    look.drag = { x: e.clientX, y: e.clientY }; look.idle = 0;
+  };
+  const onEyeEnd = () => { look.drag = null; };
+  const onWheel = (e: WheelEvent) => {
+    if (!eye) return;
+    e.preventDefault();
+    look.fov = THREE.MathUtils.clamp(look.fov * Math.exp(e.deltaY * 0.0012), 22, 85);
+  };
+
   function setView(v: ViewSpec) {
     view = v;
     controls.minDistance = v.min ?? 6; controls.maxDistance = v.max ?? 160;
@@ -399,12 +448,15 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   let down: [number, number] | null = null;
   const shown = (o: THREE.Object3D | null) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
-  const onDown = (e: PointerEvent) => { down = [e.clientX, e.clientY]; };
+  const onDown = (e: PointerEvent) => {
+    down = [e.clientX, e.clientY];
+    if (eye) { look.drag = { x: e.clientX, y: e.clientY }; look.idle = 0; renderer.domElement.setPointerCapture(e.pointerId); }
+  };
   const onUp = (e: PointerEvent) => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5 || !pickRoot) return;
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-    ray.setFromCamera(ndc, camera);
+    ray.setFromCamera(ndc, eye ? eyeCam : camera);
     const hit = ray.intersectObject(pickRoot, true).find(h => (h.object as THREE.Mesh).isMesh && !h.object.userData.outline && shown(h.object)) || null;
     let o: THREE.Object3D | null = hit ? hit.object : null;
     while (o && !o.userData.part) o = o.parent;
@@ -412,6 +464,10 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   };
   renderer.domElement.addEventListener('pointerdown', onDown);
   renderer.domElement.addEventListener('pointerup', onUp);
+  renderer.domElement.addEventListener('pointermove', onEyeMove);
+  renderer.domElement.addEventListener('pointerup', onEyeEnd);
+  renderer.domElement.addEventListener('pointercancel', onEyeEnd);
+  renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 
   // ── change notifications (view state for the UI) ──
   const listeners: (() => void)[] = [];
@@ -426,7 +482,8 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     if (!alive) return;
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     ticks.forEach(f => f(now, dt));
-    if (camAnim) {
+    if (eye) placeEye(dt);
+    else if (camAnim) {
       if (camAnim.t === 0) { controls.autoRotate = false; controls.enableDamping = false; }
       camAnim.t = Math.min(1, camAnim.t + dt / 0.8); const k = ease(camAnim.t);
       controls.target.lerpVectors(camAnim.fromT, view.target, k);
@@ -434,9 +491,10 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
       if (camera === ortho && camAnim.zoom0 !== undefined) { ortho.zoom = THREE.MathUtils.lerp(camAnim.zoom0, 1, k); ortho.updateProjectionMatrix(); }
       if (camAnim.t >= 1) { controls.enableDamping = true; controls.autoRotate = camAnim.spin; camAnim = null; emit(); }
     }
-    controls.update(dt);
+    if (!eye) controls.update(dt);
     applyWeight();
-    const bufH = renderer.getDrawingBufferSize(tmpV).y, pxScale = camera === ortho ? bufH * ortho.zoom / orthoH : bufH / fovK();
+    const bufH = renderer.getDrawingBufferSize(tmpV).y;
+    const pxScale = eye ? bufH / (2 * Math.tan(THREE.MathUtils.degToRad(eyeCam.fov / 2))) : camera === ortho ? bufH * ortho.zoom / orthoH : bufH / fovK();
     glowMats.forEach(m => { m.uniforms.scale.value = pxScale; });
     composer.render();
     raf = requestAnimationFrame(frame);
@@ -444,7 +502,7 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
 
   const ro = new ResizeObserver(() => {
     ({ w: vw, h: vh } = size());
-    persp.aspect = vw / vh; persp.updateProjectionMatrix(); orthoFrustum();
+    persp.aspect = eyeCam.aspect = vw / vh; persp.updateProjectionMatrix(); eyeCam.updateProjectionMatrix(); orthoFrustum();
     renderer.setSize(vw, vh); composer.setSize(vw, vh);
     const r = devRes();
     outlineMat.uniforms.res.value.copy(r); outlineAccentMat.uniforms.res.value.copy(r);
@@ -459,6 +517,10 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     alive = false; cancelAnimationFrame(raf); ro.disconnect();
     renderer.domElement.removeEventListener('pointerdown', onDown);
     renderer.domElement.removeEventListener('pointerup', onUp);
+    renderer.domElement.removeEventListener('pointermove', onEyeMove);
+    renderer.domElement.removeEventListener('pointerup', onEyeEnd);
+    renderer.domElement.removeEventListener('pointercancel', onEyeEnd);
+    renderer.domElement.removeEventListener('wheel', onWheel);
     controls.dispose();
     scene.traverse(o => {
       const m = o as THREE.Mesh;
@@ -478,7 +540,11 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     lights: { hemi, ambient, sun, fill },
     /** line and outline materials a selected part wears */
     accentLineMats: new Set<THREE.Material>([accentLineMat, accentMinorMat, outlineAccentMat]),
-    get camera() { return camera; },
+    /** the camera the frame is drawn with (the first-person one while it is on) */
+    get camera() { return eye ? eyeCam : camera; },
+    /** the orbit camera, even while the first-person view is on */
+    get orbitCamera() { return camera; },
+    get eye() { return eye !== null; }, setEye,
     /** add a post pass before tone mapping (bloom and the like) */
     addPreOutputPass(p: Pass) { composer.insertPass(p, 1); },
     mats: { body: bodyMat, recess: recessMat, pad: padMat, glass: glassMat, line: lineMat, major: majorMat },

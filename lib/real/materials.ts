@@ -116,7 +116,9 @@ export function realMaterials(tex: THREE.Texture, skin: SkinSpec) {
       iridescence: 0.12, iridescenceIOR: 1.5, iridescenceThicknessRange: [250, 330], envMapIntensity: 1.6,
     }),
   };
-  Object.values(mats).forEach(m => { m.userData.realStyle = true; });   // keep the hairline light theme's accent fill off them
+  // realStyle keeps the hairline light theme's accent fill off them; the name lets a view find them (the pilot's view
+  // clears the canopy from inside)
+  Object.entries(mats).forEach(([k, m]) => { m.userData.realStyle = true; m.name = k; });
   return mats;
 }
 

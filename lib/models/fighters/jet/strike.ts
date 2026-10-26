@@ -30,9 +30,9 @@ const dirR = () => V(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize();
 type Pts = ReturnType<Engine['glowPoints']>;
 type Plume = ReturnType<typeof makePlume>;
 
-interface Target { at: THREE.Vector3; intact: THREE.Group; rubble: THREE.Group; fire: Pts; hit: boolean; size: number }
-interface Drone { g: THREE.Group; p: THREE.Vector3; v: THREE.Vector3; big: boolean; alive: boolean; engaged: boolean; falling: boolean; spin: THREE.Vector3 }
-interface Shot {
+export interface Target { at: THREE.Vector3; intact: THREE.Group; rubble: THREE.Group; fire: Pts; hit: boolean; size: number }
+export interface Drone { g: THREE.Group; p: THREE.Vector3; v: THREE.Vector3; big: boolean; alive: boolean; engaged: boolean; falling: boolean; spin: THREE.Vector3 }
+export interface Shot {
   s: Store; pivot: THREE.Group; f0: THREE.Vector3; p: THREE.Vector3; v: THREE.Vector3; t: number; len: number;
   drone?: Drone; target?: Target; aim: THREE.Vector3; bez?: THREE.Vector3[]; dur: number;
   ign: number; lit: boolean; plume: Plume | null; tail: THREE.Vector3 | null;
@@ -286,6 +286,7 @@ export function createStrike(E: Engine, R: JetRig, C: Circuit, snd: Sound, say: 
 
   /** one frame: s is the circuit position (−1 when the jet is not flying it); bay positions gate the releases */
   function update(now: number, dt: number, s: number, bayMainT: number, baySideT: number) {
+    clock = now;
     R.craft.getWorldDirection(fwd); vel.copy(fwd).multiplyScalar(s >= 0 ? C.speed(s) : 0);
     down.set(0, -1, 0).applyQuaternion(R.craft.getWorldQuaternion(new THREE.Quaternion()));
     const jet = R.craft.position;
@@ -416,7 +417,7 @@ export function createStrike(E: Engine, R: JetRig, C: Circuit, snd: Sound, say: 
       sh.plume?.group.traverse(x => { const m = x as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } });
       fx.remove(sh.pivot, sh.trail, sh.motor); sh.trail.geometry.dispose(); (sh.trail.material as THREE.Material).dispose();
     }
-    shots.length = 0; saved.clear(); fired = new Set(); said = new Set(); kills = hits = 0; started = false; lastMainS = srmAt = -1;
+    shots.length = 0; saved.clear(); held = null; fired = new Set(); said = new Set(); kills = hits = 0; started = false; lastMainS = srmAt = -1;
     root.visible = false; drones.forEach(d => { d.g.visible = false; });
     targets.forEach(t => { t.hit = false; t.intact.visible = true; t.rubble.visible = false; t.fire.visible = false; });
     booms.forEach(b => { b.on = false; b.line.visible = false; });
@@ -443,6 +444,30 @@ export function createStrike(E: Engine, R: JetRig, C: Circuit, snd: Sound, say: 
     else { protoPlume.set(1, 0); warm(); protoPlume.set(0, 0); }
   }
 
-  return { begin, bays, update, reset, setReal, get active() { return started; } };
+  // ── what the pilot's view reads ──
+  let clock = 0, held: { at: THREE.Vector3; t: number } | null = null;
+  /** where a pilot would be looking: the newest weapon's target until it hits and a moment after (the burst), else the
+   *  nearest live drone ahead; false when there is nothing to watch */
+  function focus(out: THREE.Vector3) {
+    if (!started) return false;
+    for (let i = shots.length - 1; i >= 0; i--) {
+      const sh = shots[i]; if (sh.done) continue;
+      out.copy(sh.drone ? sh.drone.p : sh.aim); held = { at: out.clone(), t: clock }; return true;
+    }
+    if (held && clock - held.t < 1600) { out.copy(held.at); return true; }
+    const jet = R.craft.position; R.craft.getWorldDirection(fwd);
+    let best: Drone | null = null, bd = 600 * u;
+    for (const d of drones) { if (!d.alive || !d.g.visible) continue; const r = d.p.distanceTo(jet); if (r < bd && tmp.copy(d.p).sub(jet).dot(fwd) > 0) { bd = r; best = d; } }
+    if (best) { out.copy(best.p); return true; }
+    return false;
+  }
+  /** weapons still aboard, by kind */
+  const remaining = () => ({ aam: aam.filter(x => !fired.has(x)).length, srm: srm.filter(x => !fired.has(x)).length, bomb: bombs.filter(x => !fired.has(x)).length, cruise: cruise.filter(x => !fired.has(x)).length });
+
+  return {
+    begin, bays, update, reset, setReal, focus, remaining, get active() { return started; },
+    /** the run as the pilot's head-up display shows it */
+    contacts: { drones: drones as readonly Drone[], targets: targets as readonly Target[], shots: shots as readonly Shot[] },
+  };
 }
 export type Strike = ReturnType<typeof createStrike>;

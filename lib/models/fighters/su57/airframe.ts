@@ -425,6 +425,8 @@ export function buildFelon(E: Engine): JetRig {
 
   return {
     stores: [...bayMissiles.map((m, i) => store(i < 2 ? 'aam' : 'bomb', m.store, 'main')), ...srms.map(o => store('srm', o, 'side'))],
+    // the pilot's eye: about 0.77 m over the seat cushion and 0.2 m ahead of it (the back reclines 18°), level with the HUD
+    pilot: { eye: P(0, 3.08, 6.62), hud: 'hud' },
     craft, cgY: 2.3, parts, screen, pose, altMax: 3.8, engines: 2, stage: apron.deck,
     // realistic style: pixel camouflage (light grey with dark blue-grey blocks, a darker spine), light radome, bare
     // metal engine bays and nozzles, red stars; the plumes leave the vectoring nozzles and turn with them

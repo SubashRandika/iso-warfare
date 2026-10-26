@@ -8,6 +8,8 @@
 //   reheat    afterburner: a deep low rumble plus crackle (sparse random pops)
 // plus what the airframe adds: runway rumble on the ground roll, wind in flight, the tyre chirp at touchdown.
 // Bigger engines (size > 1) turn slower: their tones sit lower. Everything goes through a short outdoor reverb.
+// From the cockpit (cabin) the airframe and the helmet take the top off and most of the reverb, and the air
+// conditioning hisses.
 import type { Sound, Voice } from '../../../core/sound';
 
 type N = {
@@ -18,6 +20,7 @@ type N = {
   whines: { o: OscillatorNode; g: GainNode; k: number }[];
   abG: GainNode; crackG: GainNode; abRoarG: GainNode;
   rumbleG: GainNode; windF: BiquadFilterNode; windG: GainNode;
+  cabF: BiquadFilterNode; cabG: GainNode; wet: GainNode; ecsG: GainNode;
 };
 
 /** pink noise (Paul Kellet's filter), looped */
@@ -77,7 +80,8 @@ export class Turbofan implements Voice {
     this.ctx = c; this.snd = snd;
     const bus = c.createGain(), rev = c.createConvolver(), wet = c.createGain();
     rev.buffer = outdoors(c, 1.6); wet.gain.value = 0.25;
-    bus.connect(out); bus.connect(rev).connect(wet).connect(out);
+    const cabF = c.createBiquadFilter(), cabG = c.createGain(); cabF.type = 'lowpass'; cabF.frequency.value = 18000; cabF.Q.value = 0.5;
+    bus.connect(cabF).connect(cabG).connect(out); cabG.connect(rev).connect(wet).connect(out);
     const noise = pink(c, 5), deep = brown(c, 4), pops = crackle(c, 3);
     noise.start(); deep.start(); pops.start();
     const gain = (v = 0) => { const g = c.createGain(); g.gain.value = v; return g; };
@@ -121,7 +125,11 @@ export class Turbofan implements Voice {
     const windF = filt('bandpass', 700, 0.6), windG = gain();
     noise.connect(windF).connect(windG).connect(bus);
 
-    this.n = { roarF, roarF2, roarG, wob, tearF, tearG, fans, buzz, buzzF, buzzG, whines, abG, crackG, abRoarG, rumbleG, windF, windG };
+    // cockpit air conditioning: a soft high hiss, heard only from the seat
+    const ecsF = filt('bandpass', 2600, 0.6), ecsG = gain();
+    noise.connect(ecsF).connect(ecsG).connect(out);
+
+    this.n = { roarF, roarF2, roarG, wob, tearF, tearG, fans, buzz, buzzF, buzzG, whines, abG, crackG, abRoarG, rumbleG, windF, windG, cabF, cabG, wet, ecsG };
   }
 
   /** rpm 0..1, ab 0..1 */
@@ -152,6 +160,16 @@ export class Turbofan implements Voice {
     e.rumbleG.gain.setTargetAtTime(0.3 * ground, t, 0.15);
     e.windF.frequency.setTargetAtTime(500 + 1100 * air, t, 0.3);
     e.windG.gain.setTargetAtTime(0.09 * air * air, t, 0.3);
+  }
+
+  /** heard from the cockpit (k = 1) or from outside (0); `power` 0..1 runs the air conditioning */
+  cabin(k: number, power = 0) {
+    if (!this.ctx || !this.n) return;
+    const t = this.ctx.currentTime, e = this.n;
+    e.cabF.frequency.setTargetAtTime(18000 * Math.pow(1100 / 18000, k), t, 0.08);
+    e.cabG.gain.setTargetAtTime(1 - 0.35 * k, t, 0.08);
+    e.wet.gain.setTargetAtTime(0.25 * (1 - 0.85 * k), t, 0.08);
+    e.ecsG.gain.setTargetAtTime(0.018 * k * power, t, 0.3);
   }
 
   /** the tyres touching the runway: two quick chirps and a thump */

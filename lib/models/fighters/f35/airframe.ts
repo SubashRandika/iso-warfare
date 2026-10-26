@@ -418,6 +418,8 @@ export function buildLightning(E: Engine): JetRig {
 
   return {
     stores: stores.map((m, i) => store(i < 2 ? 'aam' : 'bomb', m.store, 'main')),
+    // the pilot's eye: about 0.77 m over the seat cushion and 0.2 m ahead of it; no HUD, the symbology is on the helmet
+    pilot: { eye: P(0, 2.73, 5.17), hud: 'helmet' },
     craft, cgY: 1.9, parts, screen, pose, altMax: 3.4, hoverAlt: 2.8, engines: 1, stage: apron.deck,
     // realistic style: the darker, more even grey of the F-35's coating; the plume leaves the swivel nozzle and turns with it
     real: {

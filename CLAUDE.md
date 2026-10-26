@@ -36,7 +36,9 @@ model is its own chunk; three.js loads with the first model.
 1. `npm run new:model -- tanks m1a2 "M1A2 Abrams" --designation M1A2 --size 9.8` writes a working stub and registers
    it. Categories: see `lib/catalog/categories.ts` (add one there if needed; the armory shows a category once it has
    a model).
-2. Fill `def.ts`: real specs, an intro, every part with a factual `text` (and `click` if clicking does something),
+2. Fill `def.ts`: real specs, the information card's `info` (country, manufacturer, role, service status, and the year
+   of the first flight for aircraft or of first use for everything else; a new country needs its flag in
+   `components/Flag.tsx`), every part with a factual `text` (and `click` if clicking does something),
    actions with single-letter keys, `partActions` mapping parts to actions (or `wiggle:<id>`).
 3. Build the geometry in `model.ts`. References: `lib/models/pistols/m17/model.ts` (small, self-contained, raised over
    its mat: extruded side profiles, slide cycle, magazine drop, thrown brass) and `lib/models/fighters/` (large lofted airframes,
@@ -132,6 +134,19 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - Never add, remove, show or hide lights at runtime in the real view: a change in the light count recompiles every
   shader in the scene (a multi-second freeze per explosion). Keep a fixed pool in a visible group and vary intensity;
   compile new effects' materials when the real view comes on (`renderer.compileAsync` with the composer's target).
+- Pilot view (key P, Real view only, `jet/pilot.ts`): the engine's first-person camera (`E.setEye(spec)`: the model
+  poses the head each frame, drag looks round and eases back, wheel zooms; the orbit camera keeps tracking meanwhile,
+  so use `E.orbitCamera` for orbit work and `E.camera` for what is drawn). The head looks ahead, into turns, at the
+  touchdown point on final and is padlocked on what the strike engages (`strike.focus`). Each airframe gives
+  `JetRig.pilot`: the eye point (in P() coordinates), `hud` ('hud' symbology fixed to the airframe, conformal, drawn on
+  a canvas plane far ahead of the eye; 'helmet' on the F-35, carried by the head; 'none'), and for the bombers a
+  `deck` shown only from the seat: the inside of the skin with the windows cut out (`jet/deck.ts`, built from the
+  airframe's own surface and window table so the openings match the panes), floor, panels, yokes or sticks, seats.
+  `hide` lists parts the deck stands in for (the B-2's centre body, whose top skin runs through its cabin, swaps for a
+  finer copy with the cabin cut out). From the seat the gold canopy (material named 'canopy') turns clear, the HUD
+  combiner's static glyphs hide, and the turbofan voice goes through its cabin filter. Performance: nothing is built
+  when it comes on; its materials compile with the Real view; the symbology redraws at 30 Hz; smoke puffs the eye is
+  inside fade and are dropped in the vertex shader (no screen-filling overdraw).
 - The engine voice (`jet/turbofan.ts`) is synthesised from a turbofan's parts: pink-noise roar and tearing, per-engine
   fan tones detuned to beat, buzz-saw near full power, start-up whine and light-off thump, afterburner rumble and
   crackle, runway rumble, wind and the touchdown chirp, through a short outdoor reverb. No recorded samples.

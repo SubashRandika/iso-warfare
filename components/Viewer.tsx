@@ -5,6 +5,7 @@ import type { Snapshot, ViewCommand, ViewerApi } from '@/lib/core/host';
 import { categoryOf, DEFAULT_MODEL, getModel, hasModel, modelsIn } from '@/lib/catalog';
 import { ACCENTS } from '@/lib/iso/accents';
 import Armory from './Armory';
+import { COUNTRY_NAMES, Flag } from './Flag';
 
 const MODEL_KEY = 'iso-warfare-model';
 /** ?model=, then the last one opened (older links and saves used ?jet= / iso-warfare-jet) */
@@ -154,9 +155,20 @@ export default function Viewer() {
       </div>
 
       <section className="ui info" aria-live="polite">
-        <h2>{sel ? sel.name : def.intro.title}</h2>
-        <p>{sel ? sel.text : def.intro.text}</p>
-        {sel?.click && <p className="act">Click it on the {cat.one}: <b>{sel.click}</b></p>}
+        <h2>{sel ? sel.name : def.name}</h2>
+        {sel ? <>
+          <p>{sel.text}</p>
+          {sel.click && <p className="act">Click it on the {cat.one}: <b>{sel.click}</b></p>}
+        </> : <>
+          <dl className="facts">
+            <dt>Country</dt><dd><Flag country={def.info.country} />{COUNTRY_NAMES[def.info.country]}</dd>
+            <dt>Manufacturer</dt><dd>{def.info.manufacturer}</dd>
+            <dt>Role</dt><dd>{def.info.role}</dd>
+            <dt>Status</dt><dd>{def.info.status.startsWith('In service') && <i className="live" aria-hidden="true" />}{def.info.status}</dd>
+            <dt>{cat.domain === 'air' ? 'First flight' : 'First used'}</dt><dd className="num">{def.info.first}</dd>
+          </dl>
+          <p className="act">Click a part to see what it does.</p>
+        </>}
       </section>
       <ul className="ui hint" aria-label="Keyboard shortcuts">
         {hint.map(h => <li key={h.label}>{h.keys.map(k => <kbd key={k}>{k}</kbd>)}<span>{h.label}</span></li>)}

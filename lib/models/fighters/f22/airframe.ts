@@ -438,6 +438,8 @@ export function buildRaptor(E: Engine): JetRig {
 
   return {
     stores: [...bayMissiles.map((m, i) => store(i < 2 ? 'aam' : 'bomb', m.store, 'main')), ...srms.map(o => store('srm', o, 'side'))],
+    // the pilot's eye: about 0.77 m over the seat cushion and 0.2 m ahead of it (the back reclines 18°), level with the HUD
+    pilot: { eye: P(0, 2.95, 6.22), hud: 'hud' },
     craft, cgY: 2.2, parts, screen, pose, altMax: 3.6, engines: 2, stage: apron.deck,
     // realistic style: light silver-grey coating with soft darker patches and a metallic sheen, subtle panels,
     // lighter edge bands, low-visibility markings; plumes leave the 2D nozzles

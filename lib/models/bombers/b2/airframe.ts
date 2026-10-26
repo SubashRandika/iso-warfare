@@ -13,6 +13,8 @@ import { makeKit, DEG, SIDES, ease, clamp01 } from '../../fighters/jet/kit';
 import { buildApron } from '../../../stages/apron';
 import { store, type Hinge, type JetRig, type JetState, type Store } from '../../fighters/jet/types';
 import { decalMaterial, decalTexture, layDecal, lowVisStarAndBar } from '../../../real/decals';
+import { cockpitMaterials, consoleBox, ejectionSeat, glareshield, instrumentPanel, sideStick, throttles } from '../../fighters/jet/cockpit';
+import { fan, gridLines, shellWithWindows } from '../../fighters/jet/deck';
 
 const NOSE_Z = 10.5;
 const P = (x: number, y: number, s: number) => new THREE.Vector3(x, y, NOSE_Z - s);
@@ -78,7 +80,7 @@ export function buildSpirit(E: Engine): JetRig {
   };
   const pAir = part('airframe'), pWing = part('wings');
   const centre = [...STATIONS.filter(v => v <= NOTCH_IN).slice(1).reverse().map(v => -v), ...STATIONS.filter(v => v <= NOTCH_IN)];
-  add(pAir, loft(centre.map(ring)).build());
+  const centreBody = add(pAir, loft(centre.map(ring)).build());
   for (const k of SIDES) {
     const outer = STATIONS.filter(v => v >= NOTCH_IN).map(v => k * v);
     add(pWing, loft(outer.map(ring), { capEnd: true }).build());
@@ -97,9 +99,11 @@ export function buildSpirit(E: Engine): JetRig {
     add(pCan, g.build(), glass, { outline: false, lines: false }).renderOrder = 3;
     pCan.add(E.loopLine(pts.map(p => p.clone().add(new THREE.Vector3(0, 0.004, 0))), E.mats.major));
   };
-  for (const k of SIDES) { pane(k * 0.04, k * 0.5, 2.5, 3.7); pane(k * 0.54, k * 0.76, 2.85, 4.25); }
+  // [u0, u1, s0, s1] across the crown (u: −1 … 1 side to side), port side; mirrored
+  const PANES: [number, number, number, number][] = [[0.04, 0.5, 2.5, 3.7], [0.54, 0.76, 2.85, 4.25]];
+  for (const k of SIDES) for (const [u0, u1, s0, s1] of PANES) pane(k * u0, k * u1, s0, s1);
   // the cockpit display sits under the crown (it lights the readout screen; the crew area itself is not modelled)
-  const { screen, cockpitLight } = K.cockpitDisplay(pCan, P(0, 4.5, 3.9), new THREE.Vector3(0, 0.6, -0.8), 0.6, 0.22, P(0, 4.7, 4.4));
+  const { screen, cockpitLight, mesh: screenMesh } = K.cockpitDisplay(pCan, P(0, 4.5, 3.9), new THREE.Vector3(0, 0.6, -0.8), 0.6, 0.22, P(0, 4.7, 4.4));
   // crew hatch under the cockpit: hinged at its front edge, it swings down with the boarding ladder on its inside
   const HS0 = 6.2, HS1 = 7.6, hy = (s: number) => yBot(0, s) - 0.006;
   const hatch = hinge(pCan, P(0, hy(HS0), HS0), X, 'x');
@@ -284,8 +288,50 @@ export function buildSpirit(E: Engine): JetRig {
     refuelDoor.set(-62 * DEG * ease(st.refuelT));
   }
 
+  // ═════ flight deck, drawn only in the pilot's view (Real view): the inside of the crown with the windscreen open, side
+  // walls down into the wing, a floor, two instrument panels under the glareshield, centre sticks, the throttles
+  // between the seats and both ejection seats; the pilot sits on the left, the mission commander on the right ═════
+  const deck = new THREE.Group(); deck.visible = false; K.air.add(deck);
+  const EYE_S = 4.4, EYE_X = 0.55, eye = crownPt(EYE_X / crownAt(EYE_S).w, EYE_S, -0.22);
+  {
+    const CM = cockpitMaterials(), DS0 = 1.9, DS1 = 6.0, IN = -0.04, FLOOR = eye.y - 1.15;
+    const holes: [number, number, number, number][] = PANES.flatMap(([u0, u1, s0, s1]) => [[u0, u1, s0, s1], [-u1, -u0, s0, s1]] as [number, number, number, number][]);
+    const us = gridLines(-1, 1, 0.05, holes.flatMap(h => [h[0], h[1]])), ss = gridLines(DS0, DS1, 0.1, holes.flatMap(h => [h[2], h[3]]));
+    const put = (geo: THREE.BufferGeometry, m: THREE.Material, at?: THREE.Vector3) => { const o = new THREE.Mesh(geo, m); if (at) o.position.copy(at); deck.add(o); return o; };
+    put(shellWithWindows((u, s) => crownPt(u, s, IN), us, ss, holes), CM.tub);
+    const base = (u: number, s: number) => { const p = crownPt(u, s, IN); return P(p.x, FLOOR, s); };
+    // side walls from the crown's edge down to the floor; front and rear walls under the crown's section
+    put(shellWithWindows((k, s) => k < 0.5 ? crownPt(-1, s, IN) : base(-1, s), [0, 1], ss, []), CM.tub);
+    put(shellWithWindows((k, s) => k < 0.5 ? crownPt(1, s, IN) : base(1, s), [0, 1], ss, []), CM.tub);
+    for (const s of [DS0, DS1]) put(fan([...us.map(u => crownPt(u, s, IN)), base(1, s), base(-1, s)]), CM.tub);
+    put(shellWithWindows((k, s) => base(2 * k - 1, s), [0, 1], ss, []), CM.panel);                         // floor, out to the walls
+    for (const k of SIDES) {
+      const x = k * EYE_X;
+      const panel = instrumentPanel(CM, screen.tex); panel.position.copy(P(x, eye.y - 0.44, 3.75)); panel.rotation.x = 15 * DEG; deck.add(panel);
+      const stick = sideStick(CM, 0.42); stick.position.copy(P(x, FLOOR + 0.12, 4.0)); deck.add(stick);
+      const seat = ejectionSeat(CM); seat.scale.setScalar(0.92); seat.position.copy(P(x, FLOOR + 0.5, EYE_S + 0.22)); deck.add(seat);
+    }
+    const shield = glareshield(CM, 2.0, 0.4); shield.position.copy(P(0, eye.y - 0.2, 3.62)); deck.add(shield);
+    const ped = consoleBox(CM, 0.3, 0.5, 0.9); ped.position.copy(P(0, FLOOR + 0.25, 4.5)); deck.add(ped);
+    for (const dx of [-0.05, 0.05]) { const t = throttles(CM); t.position.copy(P(dx, FLOOR + 0.5, 4.45)); deck.add(t); }
+    deck.traverse(o => { o.castShadow = false; o.receiveShadow = true; o.raycast = () => {}; });
+    // the centre body as seen from the seat: the same airfoil sections, finer, with the cabin cut out of the top skin
+    // (the original's top skin runs through the cabin at chest height); it stands in for the original in this view
+    const xs = gridLines(-NOTCH_IN, NOTCH_IN, 0.1, []), cs = gridLines(0, 1, 0.012, []);
+    const surf = (side: number) => (x: number, c: number) => {
+      const s = lerp(LE(x), TEmain(x), c), h = (side > 0 ? UPPER : -LOWER) * thick(x) * hp(c, isCut(x));
+      return P(x, yMid(x) + h, s);
+    };
+    const inCabin = (x: number, c: number) => { const s = lerp(LE(x), TEmain(x), c); return s > DS0 && s < DS1 && Math.abs(x) < crownAt(s).w - 0.02; };
+    const top = shellWithWindows(surf(1), xs, cs, [], inCabin), bot = shellWithWindows(surf(-1), [...xs].reverse(), cs, []);
+    const cutBody = new THREE.Group(); deck.add(cutBody);
+    for (const g of [top, bot]) { const m = add(cutBody, g, undefined, { outline: false, lines: false }); m.castShadow = true; }
+  }
+
   return {
     stores: bombs,
+    // the pilot's eye in the left seat under the crown, looking out through the windscreen
+    pilot: { eye, hud: 'none', deck, hide: [centreBody, screenMesh] },
     craft, cgY: 3.2, parts, screen, pose, altMax: 4.5, engines: 4, stage: apron.deck,
     // realistic style: the even dark grey of the B-2's coating, faint panels. No plumes: the troughs spread and cool
     // the exhaust so it shows neither flame nor glow.

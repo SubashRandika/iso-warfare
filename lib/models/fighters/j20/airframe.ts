@@ -444,6 +444,8 @@ export function buildDragon(E: Engine): JetRig {
 
   return {
     stores: [...bayMissiles.map((m, i) => store(i < 2 ? 'aam' : 'bomb', m.store, 'main')), ...srms.map(o => store('srm', o, 'side'))], airTarget: 'awacs',
+    // the pilot's eye: about 0.77 m over the seat cushion and 0.2 m ahead of it (the back reclines 18°), level with the HUD
+    pilot: { eye: P(0, 2.93, 6.37), hud: 'hud' },
     craft, cgY: 2.25, parts, screen, pose, altMax: 3.8, engines: 2, stage: apron.deck,
     // realistic style: light grey with large soft medium-grey patches, light grey bands on every edge, bare metal
     // nozzles, low-visibility insignia; the plumes leave the serrated nozzles

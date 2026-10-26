@@ -10,6 +10,7 @@ import { approach, clamp01 } from '../../../core/anim';
 import { Turbofan } from './turbofan';
 import { circuit } from './circuit';
 import { createStrike } from './strike';
+import { createPilotView } from './pilot';
 import type { JetRig, JetState } from './types';
 
 const MONO = 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace';
@@ -22,7 +23,10 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
     const u = R.view.dist / 36;                        // the airframe's size relative to a fighter
     const voice = snd.use(new Turbofan(R.engines, u));
     const C = circuit(u);
-    const strike = R.stores?.length ? createStrike(E, R, C, snd, say) : null;   // the attack run on the downwind leg
+    // the attack run on the downwind leg; its calls also show on the pilot's head-up display
+    const strike = R.stores?.length ? createStrike(E, R, C, snd, m => { say(m); pilot?.call(m); }) : null;
+    // the pilot's view from the seat (Real view only)
+    const pilot = R.pilot ? createPilotView(E, R, C, strike, () => voice.cabin(0)) : null;
     const L = R.lights, ALT_MAX = R.altMax, HOVER = R.hoverAlt ?? 3;
 
     const st: JetState & {
@@ -85,6 +89,11 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       brake() { st.brake = !st.brake; snd.button(); },
       refuel() { st.refuel = !st.refuel; snd.motor(1, st.refuel); },
       check() { st.checkT = performance.now(); snd.button(); },
+      pilot() {
+        if (!pilot) return;
+        if (!realOn) return say('pilot view: real view · key h');
+        pilot.set(!pilot.on); snd.button();
+      },
       demo() {
         if (script.active) { script.stop(); endDemo(); return; }
         script.start();
@@ -133,7 +142,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
     let camK = 1;
     function pullCamera(k: number) {
       const r = k / camK; if (Math.abs(r - 1) < 1e-5) return; camK = k;
-      const cam = E.camera, t = E.controls.target;
+      const cam = E.orbitCamera, t = E.controls.target;      // the orbit view, even while the pilot's view is on
       if ((cam as THREE.OrthographicCamera).isOrthographicCamera) { cam.zoom /= r; cam.updateProjectionMatrix(); }
       else { cam.position.sub(t).multiplyScalar(r).add(t); E.controls.maxDistance = Math.max(E.controls.maxDistance, cam.position.distanceTo(t) * 1.05); }
     }
@@ -162,7 +171,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
         once('baysShut', fp.s >= m.downwind[0] + 0.7 * dw, () => { if (st.bayMain || st.baySide) act.bays(); });
       }
       once('gearDown', fp.s >= m.finalTurn, () => { st.gear = true; snd.motor(2, true); });
-      once('touchdown', fp.s >= m.touchdown, () => { voice.touchdown(); if (!st.brake) act.brake(); });
+      once('touchdown', fp.s >= m.touchdown, () => { voice.touchdown(); pilot?.touchdown(); if (!st.brake) act.brake(); });
       const q = C.at(fp.s);
       // stick movements that go with it: rotation and flare pull back; rolling into and out of each turn
       st.auto.pitch = fp.s > m.rotate && fp.s < m.liftoff + 40 * u ? 0.7 : fp.s > m.flare && fp.s < m.touchdown ? 0.5 : 0;
@@ -241,7 +250,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
         skin: X.skin, focus: X.focus, size: X.size, markings: { stopZ: X.stopZ, runway: C.runway }, follow: R.craft, hide: R.stage ? [R.stage] : [], only: X.only,
         lamps: [[L.stripMat, 'slime'], [L.navMat, 'nav'], [L.beaconMat, 'red'], [L.taxiMat, 'white']],
         onStyle(on) {
-          realOn = on; strike?.setReal(on);
+          realOn = on; strike?.setReal(on); pilot?.setReal(on);
           if (!on && script.active && (fp.on || airborne())) {   // no flying demo in the Line view: back on the apron
             script.stop();
             if (fp.on) abortFlight(true); else { st.hover = false; st.gear = true; }
@@ -325,6 +334,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       }
       for (const f of followers) { f.o.position.x = f.x + R.craft.position.x; f.o.position.z = f.z + R.craft.position.z; }
       strike?.update(now, dt, fp.on ? fp.s : -1, st.bayMainT, st.baySideT);
+      pilot?.tick(now, dt, { s: fp.on ? fp.s : -1, ground: st.alt < 0.05, gearDown: st.gearT > 0.98, power: st.rpm > 0.04 || st.lights });
 
       // lights
       const flash = st.lights && now % 1100 < 140;
@@ -340,6 +350,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       drawScreen();
 
       voice.set(st.rpm, st.abT);
+      voice.cabin(pilot?.on ? 1 : 0, clamp01(st.rpm * 3));
       const v = q ? C.speed(fp.s) / C.VC : 0;
       voice.flight(q && q.alt < 0.05 ? v : 0, q && q.alt >= 0.05 ? v : 0);
     }
@@ -361,15 +372,16 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       if (st.brake) p.push('speed brake');
       if (st.refuel) p.push(opts.refuelReadout);
       if (st.lights) p.push('lights');
+      if (pilot?.on) p.push('pilot view');
       return p.join(' · ');
     }
 
     return {
       pickRoot: R.craft, parts: R.parts, view: R.view, real,
-      actions: act, passive: ['check'],
+      actions: act, passive: ['check', 'pilot'],
       on: () => ({
         demo: script.active, engines: st.eng, afterburner: st.ab, lights: st.lights, canopy: st.canopy, stovl: st.stovl, gear: !st.gear || st.hover,
-        bays: st.bayMain || st.baySide, brake: st.brake, refuel: st.refuel, check: st.checkT >= 0,
+        bays: st.bayMain || st.baySide, brake: st.brake, refuel: st.refuel, check: st.checkT >= 0, pilot: !!pilot?.on,
       }),
       tick, readout,
       keyDown(k) { const ax = AXES[k]; if (!ax) return false; st.keys[ax[0]] = ax[1]; return true; },

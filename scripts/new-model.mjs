@@ -49,10 +49,7 @@ export const ${v}: ModelDef = {
   id: '${id}', category: '${category}', name: '${q(name)}', tab: '${q(name)}', designation: '${q(desig)}',
   role: 'TODO: role · operator',
   specs: [['Length', '${S} m']],
-  intro: {
-    title: '${q(name)}',
-    text: 'Click a part to see what it does; parts that move will move. Switch the lights on, or run the demo.',
-  },
+  info: { country: 'US', manufacturer: 'TODO', role: 'TODO', status: 'TODO: In service · operator', first: 0 },   // first flight, or first used
   parts: [
     { id: 'body', name: 'Body', text: 'TODO: what this part is and does on the real ${cat.one}.' },
     { id: 'lights', name: 'Lights', click: 'switches the lights on or off', text: 'TODO: the lights on the real ${cat.one}.' },

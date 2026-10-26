@@ -71,8 +71,12 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(iPos, 1.0);
   mvPosition.xy += vec2(c * q.x - s * q.y, s * q.x + c * q.y) * iA.x;
   gl_Position = projectionMatrix * mvPosition;
+  // a puff the eye is inside (the pilot's view through a smoke column) fades out and is dropped before it is
+  // rasterised: one screen-filling translucent quad per puff would cost far more than the whole scene
+  float near = smoothstep(0.5, 1.5, -mvPosition.z / max(iA.x, 1e-3));
+  if (near < 0.01) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
   vUv = (uv + vec2(mod(iA.w, 2.0), floor(iA.w / 2.0))) * 0.5;
-  vQ = q * 2.0; vAlpha = iA.y; vCol = iC;
+  vQ = q * 2.0; vAlpha = iA.y * near; vCol = iC;
   #include <fog_vertex>
 }`;
 const SMOKE_FRAG = /* glsl */`

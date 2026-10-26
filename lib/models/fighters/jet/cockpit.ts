@@ -108,7 +108,7 @@ export function cockpitMaterials() {
     ufd: new THREE.MeshBasicMaterial({ map: ufdTexture(), toneMapped: false }),
     hud: new THREE.MeshBasicMaterial({ map: hudTexture(), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
   };
-  Object.values(m).forEach(x => { x.userData.realStyle = true; });
+  Object.entries(m).forEach(([k, x]) => { x.userData.realStyle = true; x.name = 'cockpit.' + k; });
   return m;
 }
 export type CockpitMats = ReturnType<typeof cockpitMaterials>;

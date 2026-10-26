@@ -4,10 +4,7 @@ export const m17: ModelDef = {
   id: 'm17', category: 'pistols', name: 'M17 pistol', tab: 'M17', designation: 'M17',
   role: 'Service pistol (SIG Sauer P320) · US Army',
   specs: [['Calibre', '9×19 mm'], ['Length', '203 mm'], ['Barrel', '119 mm'], ['Magazine', '17 rounds']],
-  intro: {
-    title: 'M17 pistol',
-    text: 'The US Army’s Modular Handgun System, built on the SIG Sauer P320. Click a part to see what it does; parts that move will move. Load the magazine, rack the slide, take the safety off and fire, or field-strip it. Or run the demo.',
-  },
+  info: { country: 'US', manufacturer: 'SIG Sauer', role: 'Service pistol', status: 'In service · US armed forces', first: 2017 },
   parts: [
     { id: 'slide', name: 'Slide', click: 'racks the slide (or releases it when locked back)', text: 'Stainless steel with a coyote-tan coating that matches the grip, with angled serrations front and rear for a grip when racking. On firing it recoils about three centimetres, ejects the case, cocks the striker and strips the next round from the magazine. The top is cut for a red-dot optic, here under a cover plate.' },
     { id: 'barrel', name: 'Barrel', click: 'field-strips the pistol', text: 'A 119 mm (4.7 in) barrel. It locks into the slide’s ejection port for the shot and tilts down to unlock as the slide moves back, the Browning short-recoil cycle used by most service pistols.' },

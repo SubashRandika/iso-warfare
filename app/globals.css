@@ -122,6 +122,15 @@ button { font: inherit; color: inherit; }
 .info p { margin: 0; }
 .info .act { margin-top: 8px; color: var(--dim); }
 .info .act b { color: var(--ink); font-weight: 500; }
+/* the model's facts: label column, value column; the flag beside the country, a live dot for a type in service */
+.info .facts { display: grid; grid-template-columns: max-content 1fr; gap: 5px 16px; margin: 8px 0 0; }
+.info dt { align-self: center; color: var(--dim); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+.info dd { margin: 0; min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.info dd.num { font-variant-numeric: tabular-nums; }
+.info .live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+:root[data-theme="light"] .info .live { box-shadow: none; }
+.flag { flex: none; display: inline-flex; height: 14px; border-radius: 2px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
+.flag svg { display: block; height: 100%; width: auto; }
 /* bottom row: backed chips so they read over any scene, sky or apron, in both themes */
 .hint, .read, .credit { border: 1px solid var(--line); background: var(--panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .hint { left: 452px; bottom: 16px; max-width: calc(100vw - 452px - 392px); margin: 0; padding: 6px 12px; list-style: none; display: flex; flex-wrap: wrap; gap: 5px 14px; border-radius: 10px; color: var(--dim); font-size: 11px; pointer-events: none; }

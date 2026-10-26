@@ -14,6 +14,8 @@ import { makeKit, DEG, SIDES, PLATE, ease, clamp01 } from '../../fighters/jet/ki
 import { buildApron } from '../../../stages/apron';
 import { store, type Hinge, type JetRig, type JetState, type Store } from '../../fighters/jet/types';
 import { decalMaterial, decalTexture, layDecal, lowVisStarAndBar, profileAt } from '../../../real/decals';
+import { cockpitMaterials, consoleBox, ejectionSeat, glareshield, instrumentPanel, throttles } from '../../fighters/jet/cockpit';
+import { fan, gridLines, shellWithWindows, yoke } from '../../fighters/jet/deck';
 
 const NOSE_Z = 24.25;
 const P = (x: number, y: number, s: number) => new THREE.Vector3(x, y, NOSE_Z - s);
@@ -49,6 +51,9 @@ const fusPt = (s: number, a: number, lift = 0) => {
   return P(p.x + n.x * lift, p.y + n.y * lift, s);
 };
 const fusRing = (s: number) => Array.from({ length: NF }, (_, i) => fusPt(s, i / NF * Math.PI * 2));
+// the pilots' upper-deck windows on the port side as [s0, s1, a0, a1] (a: angle round the section, π/2 the top),
+// mirrored to starboard: windscreen (two panes), eyebrow, two side windows
+const WINDOWS: [number, number, number, number][] = [[3.35, 4.25, 1.06, 1.3], [3.35, 4.25, 1.34, 1.54], [4.35, 5.0, 1.12, 1.44], [4.35, 5.3, 0.74, 1.04], [5.4, 6.2, 0.66, 0.96]];
 const topY = (s: number) => fus(s).cy + fus(s).hh;
 const bellyY = (s: number) => fus(s).cy - fus(s).hh;
 
@@ -103,6 +108,7 @@ export function buildStratofortress(E: Engine): JetRig {
   add(pAir, loft(STATIONS.map(fusRing), { capEnd: true }).build());
   const pCan = part('canopy');
   // windows: windscreen, eyebrows and side windows of the pilots' upper deck, mirrored (angle π/2 is the top)
+  const windows: THREE.Mesh[] = [];
   const pane = (s0: number, s1: number, a0: number, a1: number) => {
     const g = new Geo(), n = 3;
     for (let i = 0; i < n; i++) for (let j = 0; j < 2; j++) {
@@ -110,15 +116,13 @@ export function buildStratofortress(E: Engine): JetRig {
       const pts = [fusPt(sa, aa, 0.015), fusPt(sa, ab, 0.015), fusPt(sb, ab, 0.015), fusPt(sb, aa, 0.015)];
       g.sheet(pts, fusPt((sa + sb) / 2, (aa + ab) / 2, 1).sub(fusPt((sa + sb) / 2, (aa + ab) / 2)));
     }
-    add(pCan, g.build(), glass, { outline: false, lines: false, real: 'seeker' });
+    windows.push(add(pCan, g.build(), glass, { outline: false, lines: false, real: 'seeker' }));
     pCan.add(E.loopLine([fusPt(s0, a0, 0.02), fusPt(s0, a1, 0.02), fusPt(s1, a1, 0.02), fusPt(s1, a0, 0.02)], E.mats.major));
   };
   for (const k of SIDES) {
     const A = (a: number) => k > 0 ? a : Math.PI - a;
     const pn = (s0: number, s1: number, a0: number, a1: number) => pane(s0, s1, Math.min(A(a0), A(a1)), Math.max(A(a0), A(a1)));
-    pn(3.35, 4.25, 1.06, 1.3); pn(3.35, 4.25, 1.34, 1.54);         // windscreen
-    pn(4.35, 5.0, 1.12, 1.44);                                      // eyebrow
-    pn(4.35, 5.3, 0.74, 1.04); pn(5.4, 6.2, 0.66, 0.96);            // side windows
+    for (const w of WINDOWS) pn(...w);
   }
   // the cockpit display sits inside the nose (it lights the readout screen; the crew stations are not modelled)
   const { screen, cockpitLight } = K.cockpitDisplay(pCan, P(0, 4.3, 4.8), new THREE.Vector3(0, 0.6, -0.8), 0.6, 0.22, P(0, 4.5, 5.2));
@@ -328,8 +332,35 @@ export function buildStratofortress(E: Engine): JetRig {
     refuelDoor.set(-62 * DEG * ease(st.refuelT));
   }
 
+  // ═════ flight deck, drawn only in the pilot's view (Real view): the inside of the skin with the windows open, the
+  // floor, instrument panels under a long glareshield, two yokes, the throttle pedestal (eight levers) and both ejection
+  // seats; the pilot sits on the left ═════
+  const deck = new THREE.Group(); deck.visible = false; K.air.add(deck);
+  {
+    const CM = cockpitMaterials(), DS0 = 2.9, DS1 = 6.7, FLOOR = 3.62, IN = -0.05;
+    const holes: [number, number, number, number][] = [];
+    for (const k of SIDES) for (const [s0, s1, a0, a1] of WINDOWS) holes.push(k > 0 ? [a0, a1, s0, s1] : [Math.PI - a1, Math.PI - a0, s0, s1]);
+    const as = gridLines(0, Math.PI * 2, Math.PI / 40, holes.flatMap(h => [h[0], h[1]]));
+    const ss = gridLines(DS0, DS1, 0.12, holes.flatMap(h => [h[2], h[3]]));
+    const put = (geo: THREE.BufferGeometry, m: THREE.Material, at?: THREE.Vector3) => { const o = new THREE.Mesh(geo, m); if (at) o.position.copy(at); deck.add(o); return o; };
+    put(shellWithWindows((a, s) => fusPt(s, a, IN), as, ss, holes), CM.tub);
+    for (const s of [DS0, DS1]) put(fan(Array.from({ length: 48 }, (_, i) => fusPt(s, i / 48 * Math.PI * 2, IN))), CM.tub);   // bulkheads
+    put(new THREE.PlaneGeometry(3, DS1 - DS0).rotateX(-Math.PI / 2), CM.panel, P(0, FLOOR, (DS0 + DS1) / 2));
+    for (const k of SIDES) {
+      const panel = instrumentPanel(CM, screen.tex); panel.position.copy(P(k * 0.6, 4.36, 3.62)); panel.rotation.x = 15 * DEG; deck.add(panel);
+      const y = yoke(CM); y.position.copy(P(k * 0.6, FLOOR, 4.45)); deck.add(y);
+      const seat = ejectionSeat(CM); seat.scale.setScalar(0.95); seat.position.copy(P(k * 0.6, FLOOR + 0.51, 5.27)); deck.add(seat);
+    }
+    const shield = glareshield(CM, 2.3, 0.42); shield.position.copy(P(0, 4.6, 3.5)); deck.add(shield);
+    const ped = consoleBox(CM, 0.36, 0.55, 1.0); ped.position.copy(P(0, FLOOR + 0.275, 4.45)); deck.add(ped);
+    for (const dx of [-0.12, -0.04, 0.04, 0.12]) { const t = throttles(CM); t.scale.setScalar(0.8); t.position.copy(P(dx, FLOOR + 0.55, 4.35)); deck.add(t); }
+    deck.traverse(o => { o.castShadow = false; o.receiveShadow = true; o.raycast = () => {}; });
+  }
+
   return {
     stores,
+    // the pilot's eye in the left seat, behind the outer windscreen pane
+    pilot: { eye: P(0.6, 4.9, 5.05), hud: 'none', deck, glass: windows },
     craft, cgY: 3.4, parts, screen, pose, altMax: 6, engines: 8, stage: apron.deck,
     // realistic style: overall gunship grey, faint panels; dry exhaust from the eight engines
     real: {

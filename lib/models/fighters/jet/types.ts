@@ -55,6 +55,15 @@ export interface JetRig {
   /** weapons for the demo strike (see Store); `airTarget` 'awacs': its first air target is a large support aircraft */
   stores?: Store[];
   airTarget?: 'fighter' | 'awacs';
+  /**
+   * The pilot's seat for the pilot's view (Real view only). `eye`: the design eye point in the airframe's coordinates
+   * (as P() gives them, ground at y = 0). `hud`:
+   * 'hud' symbology fixed to the airframe ahead of the eye, 'helmet' carried by the head (F-35), 'none'. `deck`: a flight
+   * deck drawn only from the seat (bombers, whose crew stations aren't modelled otherwise). `glass`: window meshes made
+   * clear from inside (canopies in the canopy material are found by themselves). `hide`: parts the deck stands in for
+   * (the B-2's centre body, whose top skin runs through the cabin, is swapped for a copy with the cabin cut out).
+   */
+  pilot?: { eye: THREE.Vector3; hud: 'hud' | 'helmet' | 'none'; deck?: THREE.Object3D; glass?: THREE.Mesh[]; hide?: THREE.Object3D[] };
   /** move every part from the state; `wig(id)` is a decaying −1..1 wiggle for a clicked surface */
   pose(st: JetState, now: number, wig: (id: string) => number): void;
 }

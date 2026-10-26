@@ -13,6 +13,7 @@ export const JET_ACTIONS = {
   brake: { id: 'brake', label: 'Speed brake', key: 'S' },
   refuel: { id: 'refuel', label: 'Refuel door', key: 'R' },
   check: { id: 'check', label: 'Control check', key: 'K' },
+  pilot: { id: 'pilot', label: 'Pilot view', key: 'P' },
 } satisfies Record<string, ActionInfo>;
 
 export const WIGGLES = { lef: 'wiggle:lef', flaperons: 'wiggle:flaperons', stabs: 'wiggle:stabs', rudders: 'wiggle:rudders', fins: 'wiggle:rudders' } as const;
