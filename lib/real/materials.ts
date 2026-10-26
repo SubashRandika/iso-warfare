@@ -107,6 +107,7 @@ export function realMaterials(tex: THREE.Texture, skin: SkinSpec) {
     strut: std({ color: 0xd8dad8, roughness: 0.32, metalness: 0.55 }),
     tyre: std({ color: 0x1a1a1b, roughness: 0.88 }),
     rim: std({ color: 0xa9adae, roughness: 0.42, metalness: 0.65 }),             // painted / bare alloy wheel
+    primer: std({ color: 0xc4b24a, roughness: 0.7, metalness: 0.1 }),           // zinc-chromate yellow (flap coves)
     store: std({ color: 0xdedfd9, roughness: 0.42, metalness: 0.08 }),
     seeker: new THREE.MeshPhysicalMaterial({ color: 0x0e1216, roughness: 0.04, metalness: 0.3, clearcoat: 1 }),
     // gold, metallised canopy: reflective, tinted, with a thin-film sheen; the cockpit shows through dimly

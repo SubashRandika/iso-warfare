@@ -280,7 +280,7 @@ export function buildSpirit(E: Engine): JetRig {
     const bd = ease(clamp01(st.bayMainT / 0.45)), bm = ease(clamp01((st.bayMainT - 0.45) / 0.55));
     bayDoor.forEach(({ h, sign }) => h.set(sign * 100 * DEG * bd));
     launchers.forEach((r, i) => { r.position.y = r.userData.y0 - 0.75 * bm; r.rotation.z = (i ? -1 : 1) * bm * Math.PI / 8; });
-    hatch.set(70 * DEG * ease(st.canopyT));
+    hatch.set(-70 * DEG * ease(st.canopyT));            // negative: the panel aft of the front hinge swings down
     refuelDoor.set(-62 * DEG * ease(st.refuelT));
   }
 

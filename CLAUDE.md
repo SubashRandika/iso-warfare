@@ -68,7 +68,7 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - Tag meshes with the material they become: `kit.add(parent, geo, mat, { real: 'strut' })`, `kit.well(…, 'bay')`.
   Tags: skin, edge (the skin in `SkinSpec.edge`, for lighter edge treatments), nozzle, metal (bare engine metal in
   heat-tinted rings), radome, cockpit, intake, recess, well, bay,
-  exhaust, strut, tyre, rim, store, seeker, canopy. Untagged body meshes get the skin; `kit.wheel` (tyre on rim) and `missileGeo` tag
+  exhaust, strut, tyre, rim, primer, store, seeker, canopy. Untagged body meshes get the skin; `kit.wheel` (tyre on rim) and `missileGeo` tag
   themselves. Add a tag in `lib/real/materials.ts` if needed.
 - Paint: `SkinSpec` gives two tones and soft camouflage patches; `pixel` (block size in m) makes it digital, `core`
   darkens the spine, `scale` sizes the patches, `tone` and `seam` set how strongly panels and seams show. The F-22
@@ -98,6 +98,10 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   the exhaust). Its trailing edge runs at ±33° in every segment (constant-chord outer panels, tips level with the
   tail), and its crown and humps use a (1 − u²)ⁿ cross-section so they fade into the wing instead of sitting on it.
   Light grey seams and the tiled troughs are real-only ribbons and decals.
+  The B-52H (`lib/models/bombers/b52/`) is the big conventional bomber on the same sim: a superellipse fuselage
+  lofted by stations, a drooping high wing, eight engines in four paired pods (the engine display packs its bars to
+  fit), bicycle gear on four trucks plus wingtip outriggers, Fowler flaps that translate aft as well as rotate (the
+  hinge's outer group moves) uncovering 'primer' yellow coves, spoilers instead of ailerons (roll and air brakes).
 
 ## Rules that keep the look and the behaviour consistent
 

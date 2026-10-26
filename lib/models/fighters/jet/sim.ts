@@ -135,9 +135,11 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       sx.fillStyle = A; sx.strokeStyle = A; sx.font = `600 18px ${MONO}`; sx.textBaseline = 'top';
       // engines
       sx.fillText(R.engines > 1 ? 'ENG' : 'F135', 18, 16);
-      const bw = R.engines > 2 ? 16 : 26, gap = R.engines > 2 ? 22 : 48;
+      // one bar per engine, packed tighter for many engines so they stay inside the left panel
+      const gap = Math.min(R.engines > 2 ? 22 : 48, (pw - 74) / R.engines), bw = R.engines > 2 ? Math.min(16, gap * 0.7) : 26;
       for (let i = 0; i < R.engines; i++) { const x = 30 + i * gap, h = (H - 70) * st.rpm; sx.strokeRect(x, 44, bw, H - 70); sx.fillRect(x, 44 + (H - 70) - h, bw, h); }
-      sx.fillText(`${Math.round(st.rpm * 100)}%`, 30 + R.engines * gap + 8, 60);
+      if (R.engines > 4) sx.fillText(`${Math.round(st.rpm * 100)}%`, 70, 16);
+      else sx.fillText(`${Math.round(st.rpm * 100)}%`, 30 + R.engines * gap + 8, 60);
       if (st.abT > 0.5) { sx.fillRect(118, 100, 44, 26); sx.fillStyle = bg; sx.fillText('AB', 128, 104); sx.fillStyle = A; }
       // attitude
       const cx = pw * 1.5, cy = H / 2;
