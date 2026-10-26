@@ -103,6 +103,18 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   fit), bicycle gear on four trucks plus wingtip outriggers, Fowler flaps that translate aft as well as rotate (the
   hinge's outer group moves) uncovering 'primer' yellow coves, spoilers instead of ailerons (roll and air brakes).
 
+## The jets' demo and sound
+
+- Every jet's demo flies a real circuit from a runway (`lib/models/fighters/jet/circuit.ts`): take-off roll, rotation,
+  climb, two banked 180° turns, final with gear down, flare, touchdown and a roll-out that stops on the parking
+  spot. Distances and speeds scale with `view.dist / 36`, so bombers take longer runs and every jet takes ~44 s.
+  The craft really moves; `E.track(delta)` moves the orbit target and camera with it (the user can still orbit),
+  `RealSpec.follow` moves the sun's shadow box, `markings.runway` paints the runway, and the hairline runway and the
+  soft shadow come from the sim. Stopping the demo part-way puts the jet back over its spot. The F-35B then hovers.
+- The engine voice (`jet/turbofan.ts`) is synthesised from a turbofan's parts: pink-noise roar and tearing, per-engine
+  fan tones detuned to beat, buzz-saw near full power, start-up whine and light-off thump, afterburner rumble and
+  crackle, runway rumble, wind and the touchdown chirp, through a short outdoor reverb. No recorded samples.
+
 ## Rules that keep the look and the behaviour consistent
 
 - Small arms (pistols, rifles, sniper rifles, machine guns) float raised above a floor with no stand or post.

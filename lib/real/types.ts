@@ -52,8 +52,13 @@ export interface RealSpec {
   size: number;
   /** pieces shown in one style only: `line` in the hairline view, `real` in the realistic one */
   only?: { line: THREE.Object3D[]; real: THREE.Object3D[] };
-  /** where the taxi line and stop bar go: the line runs along z through x = 0, the bar at z = stopZ */
-  markings?: { stopZ: number };
+  /**
+   * where the taxi line and stop bar go: the line runs along z through x = 0, the bar at z = stopZ; `runway` paints a
+   * runway along z (threshold to threshold, width w) with edge lines, a dashed centre line and threshold bars
+   */
+  markings?: { stopZ: number; runway?: { z0: number; z1: number; w: number } };
+  /** the sun and its shadow box follow this object across the ground (a jet on its take-off run) */
+  follow?: THREE.Object3D;
   /** called when the style changes (show plumes, swap behaviours) */
   onStyle?(real: boolean): void;
   /** every frame while the real style is on: drive emissive heat, plumes and the like */

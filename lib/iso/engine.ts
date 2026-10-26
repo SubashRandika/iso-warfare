@@ -375,6 +375,11 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     controls.autoRotate = on; controls.autoRotateSpeed = 1.2;
     emit();
   }
+  /** move the orbit target and the camera together by `d` (to follow a moving model); the user keeps orbiting */
+  function track(d: THREE.Vector3) {
+    controls.target.add(d); persp.position.add(d); ortho.position.add(d); view.target.add(d);
+    if (camAnim) { camAnim.from.add(d); camAnim.fromT.add(d); }
+  }
   function setView(v: ViewSpec) {
     view = v;
     controls.minDistance = v.min ?? 6; controls.maxDistance = v.max ?? 160;
@@ -481,7 +486,7 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     accent, themeHooks, shadowStrength,
     get theme() { return theme; }, get accentId() { return accentId; },
     get spin() { return controls.autoRotate; }, get iso() { return camera === ortho; },
-    setTheme, setAccent, setSpin, toggleIso, setOrtho, setView,
+    setTheme, setAccent, setSpin, toggleIso, setOrtho, setView, track,
     get view() { return view; },
     setPickRoot(o: THREE.Object3D) { pickRoot = o; },
     onPick(f: Pick) { pickers.push(f); },

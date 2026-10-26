@@ -39,7 +39,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
   // ── world: sky, ground, markings ──
   const world = new THREE.Group(); world.visible = false; E.scene.add(world);
   const sky = new Sky(); sky.scale.setScalar(4000); sky.raycast = () => {}; world.add(sky);
-  const conc = concreteTextures(), TILE = 20, G = Math.max(600, S * 40);
+  const conc = concreteTextures(), TILE = 20, G = Math.max(1600, S * 60);   // wide enough for a circuit
   for (const t of [conc.map, conc.roughnessMap, conc.bumpMap]) t.repeat.set(G / TILE, G / TILE);
   const groundMat = new THREE.MeshStandardMaterial({ map: conc.map, roughnessMap: conc.roughnessMap, bumpMap: conc.bumpMap, bumpScale: 1.2, roughness: 1, metalness: 0 });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(G, G).rotateX(-Math.PI / 2), groundMat);
@@ -52,9 +52,20 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), m); s.position.set(x, y, z); s.receiveShadow = true; s.raycast = () => {}; world.add(s);
   };
   if (spec.markings) {
-    const L = S * 9;
+    const rw = spec.markings.runway, L = rw ? S * 1.6 : S * 9;
     strip(0.32, L, 0, focus.z, edge, 0.003); strip(0.16, L, 0, focus.z, paint);                       // taxi line, black-edged
     strip(S * 0.24, 0.5, 0, spec.markings.stopZ, edge, 0.003); strip(S * 0.22, 0.32, 0, spec.markings.stopZ, paint);   // stop bar
+    if (rw) {                                          // runway: edge lines, dashed centre line, threshold bars, aiming points
+      const white = new THREE.MeshStandardMaterial({ color: 0xe6e6df, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      const k = rw.w / 45, len = rw.z1 - rw.z0, mid = (rw.z0 + rw.z1) / 2;
+      for (const x of [-1, 1]) strip(0.9 * k, len, x * (rw.w / 2 - 0.6 * k), mid, white, 0.0035);
+      for (let z = rw.z0 + 60 * k; z < rw.z1 - 60 * k; z += 50 * k) if (Math.abs(z - focus.z) > S * 0.9) strip(0.9 * k, 30 * k, 0, z, white, 0.0035);
+      for (const [z, dir] of [[rw.z0, 1], [rw.z1, -1]]) {
+        for (let i = 0; i < 8; i++) for (const sx of [-1, 1]) strip(1.8 * k, 30 * k, sx * (3 * k + i * 2.6 * k), z + dir * 21 * k, white, 0.0035);
+        for (const sx of [-1, 1]) strip(10 * k, 45 * k, sx * 7 * k, z + dir * 310 * k * Math.min(1, len / (900 * k)), white, 0.0035);
+      }
+      white.userData.realStyle = true;
+    }
   }
 
   // ── sun & environment ──
@@ -70,6 +81,12 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
   const bloom = new UnrealBloomPass(new THREE.Vector2(E.renderer.domElement.width, E.renderer.domElement.height), 0.3, 0.45, 3.0);
   bloom.enabled = false; E.addPreOutputPass(bloom);
 
+  const sunDir = new THREE.Vector3(0, 1, 0), aimAt = new THREE.Vector3();
+  /** the sun and its shadow box sit over the focus, or over the followed object as it moves */
+  function aimSun() {
+    if (spec.follow) { spec.follow.getWorldPosition(aimAt); aimAt.y = focus.y; } else aimAt.copy(focus);
+    sun.position.copy(aimAt).addScaledVector(sunDir, SUN); sun.target.position.copy(aimAt); sun.target.updateMatrixWorld();
+  }
   function applyTime() {
     const T = E.theme === 'light' ? TIMES.day : TIMES.dusk, key = E.theme;
     const el = THREE.MathUtils.degToRad(T.el), az = THREE.MathUtils.degToRad(T.az);
@@ -90,7 +107,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
     E.renderer.toneMapping = THREE.ACESFilmicToneMapping; E.renderer.toneMappingExposure = T.exposure;
     E.lights.hemi.intensity = 0; E.lights.ambient.intensity = 0; E.lights.fill.intensity = 0;
     sun.color.set(T.sunCol); sun.intensity = T.sun; sun.castShadow = true;
-    sun.position.copy(focus).addScaledVector(dir, SUN); sun.target.position.copy(focus); sun.target.updateMatrixWorld();
+    sunDir.copy(dir); aimSun();
     bloom.strength = T.bloom;
   }
 
@@ -182,6 +199,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
       o.visible = !(o as THREE.Points).isPoints && E.accentLineMats.has(mat);
     }
     for (const [src, r, gain] of lampMats) r.emissiveIntensity = src.emissiveIntensity * gain;
+    if (spec.follow) aimSun();
     spec.tick?.(now, M);
   });
 

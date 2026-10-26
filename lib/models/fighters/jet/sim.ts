@@ -8,6 +8,7 @@ import type { RealSpec } from '../../../real/types';
 import { makePlume } from '../../../real/plume';
 import { approach, clamp01 } from '../../../core/anim';
 import { Turbofan } from './turbofan';
+import { circuit, runwayLines } from './circuit';
 import type { JetRig, JetState } from './types';
 
 const MONO = 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace';
@@ -17,7 +18,9 @@ export interface JetOptions { refuelReadout: string; /** what the readout calls 
 export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelFactory {
   return ({ E, snd, script, say, wig, has }) => {
     const R = build(E);
-    const voice = snd.use(new Turbofan());
+    const u = R.view.dist / 36;                        // the airframe's size relative to a fighter
+    const voice = snd.use(new Turbofan(R.engines, u));
+    const C = circuit(u);
     const L = R.lights, ALT_MAX = R.altMax, HOVER = R.hoverAlt ?? 3;
 
     const st: JetState & {
@@ -84,36 +87,70 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
         script.start();
         st.brake = false; st.refuel = false; st.bayMain = st.baySide = false;
         if (!st.lights) act.lights();
-        if (st.canopy && !airborne()) act.canopy();
-        later(600, () => { if (!st.eng) act.engines(); });
-        later(2900, () => act.check());
-        later(6000, () => act.bays());
-        later(8600, () => act.bays());
-        const ready = () => st.rpm >= 0.9 && st.canopyT === 0;
-        if (has('stovl')) {                           // convert, lift into the hover, then yaw left and right
-          later(10000, () => { if (!st.stovl && !airborne()) act.stovl(); });
-          later(11000, () => when(() => ready() && st.stovlT >= 1, () => {
-            if (!st.hover) act.gear();
+        if (airborne()) { st.gear = true; st.hover = false; }      // land on the spot first, then start from the apron
+        if (st.stovl && !airborne()) act.stovl();
+        const hover = () => {
+          later(800, () => act.stovl());
+          when(() => st.stovlT >= 1 && st.rpm >= 0.9, () => {
+            act.gear();
             when(() => st.alt >= HOVER - 0.05, () => {
               later(400, () => { st.auto.yaw = 1; });
               later(1700, () => { st.auto.yaw = -1; });
-              later(3000, endDemo);
+              later(3000, () => { st.auto.yaw = 0; act.gear(); });
+              later(3200, () => when(() => st.alt < 0.01, () => { act.stovl(); endDemo(); }));
             });
-          }));
-        } else {                                      // take off, light the afterburner, bank both ways
-          later(10200, () => when(ready, () => {
-            if (st.gear) act.gear();
-            when(() => st.alt >= ALT_MAX - 0.05, () => {
-              if (!st.ab && has('afterburner')) act.afterburner();
-              later(1400, () => { st.auto.roll = 1; });
-              later(2700, () => { st.auto.roll = -1; });
-              later(4000, () => { st.auto.roll = 0; });
-              later(5400, () => { if (st.ab) act.afterburner(); endDemo(); });
-            });
-          }));
-        }
+          });
+        };
+        when(() => !airborne() && st.gearT >= 1 && st.stovlT === 0, () => {
+          if (st.canopy) act.canopy();
+          later(600, () => { if (!st.eng) act.engines(); });
+          later(2900, () => act.check());
+          // a full circuit from the runway; the F-35B then shows its hover on the spot
+          later(9000, () => when(() => st.rpm >= 0.9 && st.canopyT === 0 && st.checkT < 0, () => fly(() => has('stovl') ? hover() : endDemo())));
+        });
       },
     } satisfies Record<string, () => void>;
+
+    // ── the demo circuit: the jet really moves; the camera, the sun and the soft shadow move with it ──
+    const fp = { on: false, s: 0, cam: new THREE.Vector3(), flags: new Set<string>(), done: null as null | (() => void) };
+    const once = (k: string, cond: boolean, f: () => void) => { if (cond && !fp.flags.has(k)) { fp.flags.add(k); f(); } };
+    function fly(done: () => void) {
+      fp.on = true; fp.s = 0; fp.cam.set(0, 0, 0); fp.flags.clear(); fp.done = done;
+      if (has('afterburner') && !st.ab) act.afterburner();   // full reheat for the take-off roll
+    }
+    /** the demo was stopped part-way: the jet comes back over its spot (still flying if it was airborne) */
+    function abortFlight() {
+      const keep = st.alt > 0.05 ? Math.min(ALT_MAX, st.alt) : 0;
+      E.track(fp.cam.clone().negate());                 // the camera goes back to its usual framing over the apron
+      fp.on = false; st.alt = keep; st.ab = false; st.brake = false;
+      R.craft.position.x = R.craft.position.z = 0;
+    }
+    /** one frame of the circuit: advance along it at the speed it calls for, fire its events */
+    function flightStep(dt: number) {
+      fp.s = Math.min(C.length, fp.s + C.speed(fp.s) * dt);
+      const m = C.marks, dw = m.downwind[1] - m.downwind[0];
+      once('gearUp', fp.s >= m.liftoff + 12 * u, () => { st.gear = false; snd.motor(2, false); });
+      once('reheatOff', fp.s >= m.climbed, () => { if (st.ab) act.afterburner(); });
+      once('baysOpen', fp.s >= m.downwind[0] + 0.3 * dw, () => { if (!st.bayMain && !st.baySide) act.bays(); });
+      once('baysShut', fp.s >= m.downwind[0] + 0.7 * dw, () => { if (st.bayMain || st.baySide) act.bays(); });
+      once('gearDown', fp.s >= m.finalTurn, () => { st.gear = true; snd.motor(2, true); });
+      once('touchdown', fp.s >= m.touchdown, () => { voice.touchdown(); if (!st.brake) act.brake(); });
+      const q = C.at(fp.s);
+      // stick movements that go with it: rotation and flare pull back; rolling into and out of each turn
+      st.auto.pitch = fp.s > m.rotate && fp.s < m.liftoff + 40 * u ? 0.7 : fp.s > m.flare && fp.s < m.touchdown ? 0.5 : 0;
+      st.auto.roll = THREE.MathUtils.clamp((C.at(fp.s + 6 * u).bank - q.bank) / 6, -1, 1);
+      if (fp.s >= C.length) {
+        fp.on = false; st.auto.pitch = st.auto.roll = 0;
+        if (st.brake) act.brake();
+        const d = fp.done; fp.done = null; d?.();
+      }
+      return q;
+    }
+    // the runway in the hairline view, and the jet's soft shadow and taxi-light pool, which follow it
+    const rwy = runwayLines(E, C.runway, L.padLightMat, 0);
+    (R.stage ?? E.scene).add(rwy.group);
+    const followers: { o: THREE.Object3D; x: number; z: number }[] = [];
+    R.stage?.traverse(o => { const mm = (o as THREE.Mesh).material; if (mm === L.shadowMat || mm === L.taxiPoolMat) followers.push({ o, x: o.position.x, z: o.position.z }); });
 
     // ── held keys: the stick ──
     const AXES: Record<string, ['pitch' | 'roll' | 'yaw', number]> = { ArrowUp: ['pitch', 1], ArrowDown: ['pitch', -1], ArrowLeft: ['roll', -1], ArrowRight: ['roll', 1], z: ['yaw', -1], x: ['yaw', 1] };
@@ -174,7 +211,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       const abLight = new THREE.PointLight(0xff7a2e, 0, 0, 2); abLight.position.copy(mid).add(new THREE.Vector3(0, -0.2, -2.2));
       (X.nozzles[0]?.parent ?? R.craft).add(abLight);
       real = {
-        skin: X.skin, focus: X.focus, size: X.size, markings: { stopZ: X.stopZ }, hide: R.stage ? [R.stage] : [], only: X.only,
+        skin: X.skin, focus: X.focus, size: X.size, markings: { stopZ: X.stopZ, runway: C.runway }, follow: R.craft, hide: R.stage ? [R.stage] : [], only: X.only,
         lamps: [[L.stripMat, 'slime'], [L.navMat, 'nav'], [L.beaconMat, 'red'], [L.taxiMat, 'white']],
         onStyle(on) { if (!on) { plumes.forEach(p => p.set(0, 0)); dry.forEach(p => p.set(0, 0)); abLight.intensity = 0; } },
         tick(now, mats) {
@@ -201,6 +238,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       if (st.hover && st.rpm < 0.9) st.hover = false;
       // gear and altitude: take off first, then the gear folds; on landing it extends first, then the jet settles.
       // In the hover the gear stays down and the jet lifts straight up.
+      if (fp.on && !script.active) abortFlight();
       let altGoal = st.alt;
       if (st.gear) {
         if (st.gearDoorT < 1) st.gearDoorT = Math.min(1, st.gearDoorT + 2.2 * dt);
@@ -213,7 +251,9 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
           else st.gearDoorT = Math.max(0, st.gearDoorT - 2.2 * dt);
         }
       }
-      st.alt = approach(st.alt, altGoal, (st.hover || (st.stovl && st.alt > 0) ? 0.8 : 1.1) * dt);
+      const q = fp.on ? flightStep(dt) : null;
+      if (q) st.alt = q.alt;
+      else st.alt = approach(st.alt, altGoal, (st.hover || (st.stovl && st.alt > 0) ? 0.8 : 1.1) * dt);
 
       // stick: held keys + demo + the automatic control check
       if (!script.active) st.auto.pitch = st.auto.roll = st.auto.yaw = 0;      // demo stopped by the host
@@ -233,9 +273,19 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
 
       // flight attitude about the centre of gravity (gentler in the hover)
       const top = st.hover ? HOVER : ALT_MAX, a = clamp01(st.alt / top), DEG = Math.PI / 180;
-      R.craft.position.y = R.cgY + st.alt + Math.sin(now / 900) * 0.05 * a;
-      const bank = st.hover ? 8 : 24, yawK = st.hover ? 14 : 4;
-      R.craft.rotation.set((-st.p * 7 - (st.hover ? 1 : 2.5) * a) * DEG * a, -st.y * yawK * DEG * a, st.r * bank * DEG * a, 'YXZ');
+      if (q) {                                         // on the circuit: position, heading and attitude come from the path
+        // on the runway the jet pitches about its main wheels, a little behind the centre of gravity
+        const lift = q.alt < 1 ? Math.max(0, Math.sin(q.pitch * DEG)) * 2 * u * (1 - q.alt) : 0;
+        R.craft.position.set(q.x, R.cgY + q.alt + lift, q.z);
+        R.craft.rotation.set(-q.pitch * DEG, q.psi, q.bank * DEG, 'YXZ');
+        const to = new THREE.Vector3(q.x, q.alt, q.z);
+        E.track(to.clone().sub(fp.cam)); fp.cam.copy(to);
+      } else {
+        R.craft.position.y = R.cgY + st.alt + Math.sin(now / 900) * 0.05 * a;
+        const bank = st.hover ? 8 : 24, yawK = st.hover ? 14 : 4;
+        R.craft.rotation.set((-st.p * 7 - (st.hover ? 1 : 2.5) * a) * DEG * a, -st.y * yawK * DEG * a, st.r * bank * DEG * a, 'YXZ');
+      }
+      for (const f of followers) { f.o.position.x = f.x + R.craft.position.x; f.o.position.z = f.z + R.craft.position.z; }
 
       // lights
       const flash = st.lights && now % 1100 < 140;
@@ -246,11 +296,14 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       L.taxiMat.emissiveIntensity = taxi ? 1.8 : 0; L.taxiGlow.material.uniforms.intensity.value = taxi ? 0.9 : 0;
       L.taxiPoolMat.uniforms.opacity.value = taxi ? 0.38 * (1 - clamp01(st.alt / 2.5)) : 0;
       L.padLightMat.emissiveIntensity = st.lights ? 1.5 : 0; L.padGlow.material.uniforms.intensity.value = st.lights ? 0.8 : 0;
+      rwy.glow.material.uniforms.intensity.value = st.lights ? 0.8 : 0;
       L.shadowMat.uniforms.opacity.value = E.shadowStrength() * (1 - clamp01(st.alt / 14));
       L.cockpitLight.intensity = st.rpm > 0.04 || st.lights ? 2.5 : 0;
       drawScreen();
 
       voice.set(st.rpm, st.abT);
+      const v = q ? C.speed(fp.s) / C.VC : 0;
+      voice.flight(q && q.alt < 0.05 ? v : 0, q && q.alt >= 0.05 ? v : 0);
     }
 
     function readout() {
@@ -258,7 +311,9 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       p.push(!st.eng && st.rpm < 0.01 ? `${engWord} off` : `n2 ${Math.round(st.rpm * 100)}%${st.abT > 0.5 ? ' · max ab' : ''}`);
       if (st.stovlT > 0) p.push(st.stovlT >= 1 ? 'stovl' : st.stovl ? 'converting' : 'converting back');
       p.push(st.gearT >= 1 ? 'gear down' : st.gearT <= 0 ? 'gear up' : 'gear moving');
-      if (st.alt > 0.05) {
+      if (fp.on && st.alt < 0.05) p.push(fp.s < C.length / 2 ? 'take-off roll' : 'rolling out');
+      else if (fp.on) p.push(fp.s < C.marks.climbed ? 'climbing out' : fp.s < C.marks.finalTurn ? 'in the circuit' : 'on approach');
+      if (st.alt > 0.05 && !fp.on) {
         if (st.hover || st.stovl) p.push(st.alt >= HOVER - 0.01 && st.hover ? 'hovering' : st.hover ? 'lifting' : 'descending');
         else p.push(st.alt >= ALT_MAX - 0.01 ? 'airborne' : st.gear ? 'landing' : 'climbing');
       }
