@@ -5,7 +5,7 @@ import type { Engine } from '../../../iso/engine';
 import { Geo, loft, slab, merge } from '../../../iso/geo';
 import { makeKit, DEG, SIDES, PLATE, ease, clamp01, phase } from '../jet/kit';
 import { buildApron } from '../../../stages/apron';
-import type { Hinge, JetRig, JetState } from '../jet/types';
+import { store, type Hinge, type JetRig, type JetState } from '../jet/types';
 import { cockpitMaterials, cockpitMesh, consoleBox, ejectionSeat, glareshield, panoramicPanel, sideStick, throttles } from '../jet/cockpit';
 
 type V = THREE.Vector3;
@@ -417,6 +417,7 @@ export function buildLightning(E: Engine): JetRig {
   }
 
   return {
+    stores: stores.map((m, i) => store(i < 2 ? 'aam' : 'bomb', m.store, 'main')),
     craft, cgY: 1.9, parts, screen, pose, altMax: 3.4, hoverAlt: 2.8, engines: 1, stage: apron.deck,
     // realistic style: the darker, more even grey of the F-35's coating; the plume leaves the swivel nozzle and turns with it
     real: {

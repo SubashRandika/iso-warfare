@@ -11,7 +11,7 @@ import type { Engine } from '../../../iso/engine';
 import { Geo, loft, slab, merge } from '../../../iso/geo';
 import { makeKit, DEG, SIDES, ease, clamp01 } from '../../fighters/jet/kit';
 import { buildApron } from '../../../stages/apron';
-import type { Hinge, JetRig, JetState } from '../../fighters/jet/types';
+import { store, type Hinge, type JetRig, type JetState, type Store } from '../../fighters/jet/types';
 import { decalMaterial, decalTexture, layDecal, lowVisStarAndBar } from '../../../real/decals';
 
 const NOSE_Z = 10.5;
@@ -189,7 +189,7 @@ export function buildSpirit(E: Engine): JetRig {
   const B0 = 7.6, B1 = 12.6, BM = (B0 + B1) / 2;
   const bayDoor: { h: Hinge; sign: number }[] = [];
   const bomb = missileGeo(3.9, 0.21, 0.3, false);
-  const launchers: THREE.Group[] = [];
+  const launchers: THREE.Group[] = [], bombs: Store[] = [];
   for (const k of SIDES) {
     const xi = k * 0.3, xo = k * 2.3, xc = k * 1.3;
     const by = (x: number, s: number) => yBot(x, s) - 0.008;
@@ -201,7 +201,7 @@ export function buildSpirit(E: Engine): JetRig {
     well(pBay, [P(xi, yBot(xi, B0) - 0.003, B0), P(xo, yBot(xo, B0) - 0.003, B0), P(xo, yBot(xo, B1) - 0.003, B1), P(xi, yBot(xi, B1) - 0.003, B1)], DOWN, 'bay');
     const rot = new THREE.Group(); rot.position.copy(P(xc, 3.45, BM)); pBay.add(rot);
     add(rot, new THREE.CylinderGeometry(0.17, 0.17, 4.1, 10).rotateX(Math.PI / 2), undefined, { real: 'strut' });
-    for (let i = 0; i < 8; i++) { const a = (i + 0.5) / 8 * Math.PI * 2, g = bomb.clone(); g.translate(0.55 * Math.cos(a), 0.55 * Math.sin(a), 0); add(rot, g); }
+    for (let i = 0; i < 8; i++) { const a = (i + 0.5) / 8 * Math.PI * 2, g = bomb.clone(); g.translate(0.55 * Math.cos(a), 0.55 * Math.sin(a), 0); bombs.push(store('bomb', add(rot, g), 'main')); }
     rot.userData.y0 = rot.position.y; launchers.push(rot);
   }
 
@@ -285,6 +285,7 @@ export function buildSpirit(E: Engine): JetRig {
   }
 
   return {
+    stores: bombs,
     craft, cgY: 3.2, parts, screen, pose, altMax: 4.5, engines: 4, stage: apron.deck,
     // realistic style: the even dark grey of the B-2's coating, faint panels. No plumes: the troughs spread and cool
     // the exhaust so it shows neither flame nor glow.

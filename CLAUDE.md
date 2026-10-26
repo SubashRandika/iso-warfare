@@ -111,6 +111,25 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   The craft really moves; `E.track(delta)` moves the orbit target and camera with it (the user can still orbit),
   `RealSpec.follow` moves the sun's shadow box, `markings.runway` paints the runway, and the hairline runway and the
   soft shadow come from the sim. Stopping the demo part-way puts the jet back over its spot. The F-35B then hovers.
+- On the circuit's downwind leg the demo flies a strike (`jet/strike.ts`) with the weapons the airframe lists in
+  `JetRig.stores` (`store(kind, obj, bay)`: 'aam' radar missiles, 'srm' side-bay heat-seekers, 'bomb', 'cruise'):
+  a generic range of shelters, bunkers, a radar site and fuel tanks beside the leg, target drones head-on (a large
+  support aircraft first when `airTarget: 'awacs'`, as for the J-20). The strike opens each bay when its weapons are
+  needed; the real store objects detach, fly and are put back after landing. Launches follow the real sequence: bay
+  missiles and bombs are rammed down clear of the jet first (the missile's motor lights ~0.3 s later), a heat-seeker
+  fires straight off its trapeze. Missiles home by proportional navigation (lateral acceleration capped in g) with a
+  short loft, and burst on a proximity fuze tested along the whole frame's path (a 4 Mach-ish missile moves 15 m a
+  frame: a point test misses). Every fighter carries a ground-attack load too (F-22: 2 AMRAAM + 2 GBU-32; Su-57 and
+  J-20: 2 missiles + 2 guided bombs; bombs have no seeker glow, so bay seeker indices stop at `bayGlows`). The camera
+  eases back for the strike and in again after. Explosions: accent flash and shock ring (line); in real, fireball,
+  sparks, dust, smoke and a light flash; the boom delayed by distance; brevity calls via `say` (fox three, fox two,
+  bombs away, rifle, splash). Targets and effects keep their own line/real materials (`setReal` from onStyle).
+- Smoke and fire in the real view come from `lib/real/smoke.ts`: soft camera-facing puffs (instanced, lit by the sun,
+  fogged; fire additive). Lay trail puffs by distance along the path, wider than their spacing, never one per frame
+  (that comes out as a dotted line of balls).
+- Never add, remove, show or hide lights at runtime in the real view: a change in the light count recompiles every
+  shader in the scene (a multi-second freeze per explosion). Keep a fixed pool in a visible group and vary intensity;
+  compile new effects' materials when the real view comes on (`renderer.compileAsync` with the composer's target).
 - The engine voice (`jet/turbofan.ts`) is synthesised from a turbofan's parts: pink-noise roar and tearing, per-engine
   fan tones detuned to beat, buzz-saw near full power, start-up whine and light-off thump, afterburner rumble and
   crackle, runway rumble, wind and the touchdown chirp, through a short outdoor reverb. No recorded samples.

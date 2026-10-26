@@ -12,7 +12,7 @@ import type { Engine } from '../../../iso/engine';
 import { Geo, loft, slab, merge } from '../../../iso/geo';
 import { makeKit, DEG, SIDES, PLATE, ease, clamp01 } from '../../fighters/jet/kit';
 import { buildApron } from '../../../stages/apron';
-import type { Hinge, JetRig, JetState } from '../../fighters/jet/types';
+import { store, type Hinge, type JetRig, type JetState, type Store } from '../../fighters/jet/types';
 import { decalMaterial, decalTexture, layDecal, lowVisStarAndBar, profileAt } from '../../../real/decals';
 
 const NOSE_Z = 24.25;
@@ -184,12 +184,12 @@ export function buildStratofortress(E: Engine): JetRig {
     add(pTank, slab([{ le: P(k * tx, ty + 0.4, 32.4), te: P(k * tx, ty + 0.4, 35.4), t: 0.16 }, { le: P(k * tx, wY(tx) - 0.08, 32.6), te: P(k * tx, wY(tx) - 0.08, 35.2), t: 0.16 }], X, FULL_PROF).build());
   }
   const pPyl = part('pylons');
-  const cruise = missileGeo(4.3, 0.22, 0.36, true);
+  const cruise = missileGeo(4.3, 0.22, 0.36, true), stores: Store[] = [];
   for (const k of SIDES) {
     const px = 4.6, yW = wY(px) - wT(px) / 2 * 0.65, yB = yW - 0.85;
     add(pPyl, slab([{ le: P(k * px, yB, 16.2), te: P(k * px, yB, 20.6), t: 0.28 }, { le: P(k * px, yW, 16.8), te: P(k * px, yW, 21.0), t: 0.28 }], X, FULL_PROF).build());
     add(pPyl, new THREE.BoxGeometry(1.0, 0.18, 4.6).translate(k * px, yB - 0.08, NOSE_Z - 18.5));                          // stores beam
-    for (const [dx, dy] of [[-0.36, -0.42], [0.36, -0.42], [0, -0.92]]) { const g = cruise.clone(); g.translate(k * px + dx, yB + dy, NOSE_Z - 18.4); add(pPyl, g); }
+    for (const [dx, dy] of [[-0.36, -0.42], [0.36, -0.42], [0, -0.92]]) { const g = cruise.clone(); g.translate(k * px + dx, yB + dy, NOSE_Z - 18.4); stores.push(store('cruise', add(pPyl, g), 'none')); }
   }
 
   // ═════ fin and rudder; stabilisers and elevators ═════
@@ -252,7 +252,7 @@ export function buildStratofortress(E: Engine): JetRig {
   const rot = new THREE.Group(); rot.position.copy(P(0, bellyY(BM) + 1.1, BM)); pBay.add(rot);
   add(rot, new THREE.CylinderGeometry(0.22, 0.22, 7.6, 10).rotateX(Math.PI / 2), undefined, { real: 'strut' });
   const alcm = missileGeo(6.3, 0.28, 0.4, false);
-  for (let i = 0; i < 8; i++) { const a = (i + 0.5) / 8 * Math.PI * 2, g = alcm.clone(); g.translate(0.78 * Math.cos(a), 0.78 * Math.sin(a), 0); add(rot, g); }
+  for (let i = 0; i < 8; i++) { const a = (i + 0.5) / 8 * Math.PI * 2, g = alcm.clone(); g.translate(0.78 * Math.cos(a), 0.78 * Math.sin(a), 0); stores.push(store('cruise', add(rot, g), 'main')); }
   const rotY0 = rot.position.y;
 
   // ═════ refuelling receptacle on top, behind the cockpit ═════
@@ -329,6 +329,7 @@ export function buildStratofortress(E: Engine): JetRig {
   }
 
   return {
+    stores,
     craft, cgY: 3.4, parts, screen, pose, altMax: 6, engines: 8, stage: apron.deck,
     // realistic style: overall gunship grey, faint panels; dry exhaust from the eight engines
     real: {

@@ -17,6 +17,14 @@ export interface JetState {
   checkLef: number;
 }
 
+/**
+ * A weapon the demo strike can release: the object that leaves the jet (detached, flown and put back after landing),
+ * what it is, and which bay must be open first ('none': a pylon). aam: radar air-to-air missile; srm: short-range
+ * heat-seeker on a side-bay trapeze; bomb: guided bomb; cruise: stand-off cruise missile.
+ */
+export interface Store { kind: 'aam' | 'srm' | 'bomb' | 'cruise'; obj: THREE.Object3D; bay: 'main' | 'side' | 'none' }
+export const store = (kind: Store['kind'], obj: THREE.Object3D, bay: Store['bay']): Store => ({ kind, obj, bay });
+
 /** What an airframe hands the controller. */
 export interface JetRig {
   craft: THREE.Group;                  // altitude and attitude act here, about the centre of gravity
@@ -44,6 +52,9 @@ export interface JetRig {
     /** cockpit power 0..1 (HUD symbology) */
     power?(k: number): void;
   };
+  /** weapons for the demo strike (see Store); `airTarget` 'awacs': its first air target is a large support aircraft */
+  stores?: Store[];
+  airTarget?: 'fighter' | 'awacs';
   /** move every part from the state; `wig(id)` is a decaying −1..1 wiggle for a clicked surface */
   pose(st: JetState, now: number, wig: (id: string) => number): void;
 }

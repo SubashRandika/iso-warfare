@@ -9,7 +9,7 @@ import type { Engine } from '../../../iso/engine';
 import { Geo, loft, slab, rectRing, merge } from '../../../iso/geo';
 import { makeKit, DEG, SIDES, PLATE, ease, clamp01 } from '../jet/kit';
 import { buildApron } from '../../../stages/apron';
-import type { Hinge, JetRig, JetState } from '../jet/types';
+import { store, type Hinge, type JetRig, type JetState } from '../jet/types';
 import { cockpitMaterials, cockpitMesh, consoleBox, ejectionSeat, glareshield, hud, instrumentPanel, sideStick, throttles } from '../jet/cockpit';
 import { decalMaterial, decalTexture, layDecal, profileAt, starPath } from '../../../real/decals';
 
@@ -313,10 +313,13 @@ export function buildFelon(E: Engine): JetRig {
     }
     well(pBay, [P(-0.72, bellyY(s0) - 0.003, s0), P(0.72, bellyY(s0) - 0.003, s0), P(0.72, bellyY(s1) - 0.003, s1), P(-0.72, bellyY(s1) - 0.003, s1)], DOWN, 'bay');
   }
-  const r77 = missileGeo(3.6, 0.1, 0.17, true);
-  // launchers push each missile below the open doors, clear of the tunnel walls
-  const bayMissiles = BAYS.flatMap(([s0, s1]) => [0.3, -0.3].map(x => launcher(pBay, r77, P(x, bellyY((s0 + s1) / 2) + 0.2, (s0 + s1) / 2), 3.6, 0.78, 0.05)));
+  const r77 = missileGeo(3.6, 0.1, 0.17, true), kab = missileGeo(3.1, 0.17, 0.15, false);
+  // launchers push each store below the open doors, clear of the tunnel walls: two medium-range missiles in the front
+  // bay and two guided bombs in the rear one (no seeker glow on the bombs)
+  const bayMissiles = BAYS.flatMap(([s0, s1], b) => [0.3, -0.3].map(x => launcher(pBay, b ? kab : r77, P(x, bellyY((s0 + s1) / 2) + (b ? 0.26 : 0.2), (s0 + s1) / 2), b ? 3.1 : 3.6, 0.78, b ? 0 : 0.05)));
+  const bayGlows = seekerGlows.length;
   const sideDoor: Record<number, Hinge> = {}, sideRack: Record<number, Hinge> = {};
+  const srms: THREE.Group[] = [];                                  // each heat-seeker with its seeker: what is released
   const r74 = missileGeo(2.9, 0.064, 0.13, false);
   for (const k of SIDES) {
     const a = 8.2, b = 10.6, sm = (a + b) / 2, x = k * 2.04, yT = 1.86, yB = 1.36;
@@ -327,8 +330,9 @@ export function buildFelon(E: Engine): JetRig {
     const piv = P(k * 1.82, 1.92, sm), mPos = P(k * 1.8, 1.52, sm);
     sideRack[k] = hinge(pSide, piv, Z, 'z');
     const mg = r74.clone(); mg.translate(mPos.x, mPos.y, mPos.z);
-    add(sideRack[k].inner, mg);
-    K.seeker(sideRack[k].inner, mPos.clone().add(new THREE.Vector3(0, 0, 2.9 * 0.47)), 0.035);
+    const srm = new THREE.Group(); sideRack[k].inner.add(srm); srms.push(srm);
+    add(srm, mg);
+    K.seeker(srm, mPos.clone().add(new THREE.Vector3(0, 0, 2.9 * 0.47)), 0.035);
     add(sideRack[k].inner, brace(piv, mPos.clone().add(new THREE.Vector3(0, 0.07, 0)), 0.025), undefined, { real: 'strut' });
   }
 
@@ -414,12 +418,13 @@ export function buildFelon(E: Engine): JetRig {
     const sd = ease(clamp01(st.baySideT / 0.5)), sm = ease(clamp01((st.baySideT - 0.4) / 0.6));
     for (const s of SIDES) { sideDoor[s].set(s * 110 * DEG * sd); sideRack[s].set(s * 70 * DEG * sm); }
     seekerMat.emissiveIntensity = bm > 0.98 || sm > 0.98 ? 1.6 : 0;
-    seekerGlows.forEach((gl, i) => { gl.material.uniforms.intensity.value = (i < bayMissiles.length ? bm : sm) > 0.98 ? 0.8 : 0; });
+    seekerGlows.forEach((gl, i) => { gl.material.uniforms.intensity.value = (i < bayGlows ? bm : sm) > 0.98 ? 0.8 : 0; });
     canopyH.set(-38 * DEG * ease(st.canopyT));
     probe.set(-19 * DEG * (1 - ease(st.refuelT)));
   }
 
   return {
+    stores: [...bayMissiles.map((m, i) => store(i < 2 ? 'aam' : 'bomb', m.store, 'main')), ...srms.map(o => store('srm', o, 'side'))],
     craft, cgY: 2.3, parts, screen, pose, altMax: 3.8, engines: 2, stage: apron.deck,
     // realistic style: pixel camouflage (light grey with dark blue-grey blocks, a darker spine), light radome, bare
     // metal engine bays and nozzles, red stars; the plumes leave the vectoring nozzles and turn with them

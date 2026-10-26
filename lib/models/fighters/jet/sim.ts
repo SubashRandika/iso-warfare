@@ -9,6 +9,7 @@ import { makePlume } from '../../../real/plume';
 import { approach, clamp01 } from '../../../core/anim';
 import { Turbofan } from './turbofan';
 import { circuit, runwayLines } from './circuit';
+import { createStrike } from './strike';
 import type { JetRig, JetState } from './types';
 
 const MONO = 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace';
@@ -21,6 +22,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
     const u = R.view.dist / 36;                        // the airframe's size relative to a fighter
     const voice = snd.use(new Turbofan(R.engines, u));
     const C = circuit(u);
+    const strike = R.stores?.length ? createStrike(E, R, C, snd, say) : null;   // the attack run on the downwind leg
     const L = R.lights, ALT_MAX = R.altMax, HOVER = R.hoverAlt ?? 3;
 
     const st: JetState & {
@@ -118,11 +120,21 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       fp.on = true; fp.s = 0; fp.cam.set(0, 0, 0); fp.flags.clear(); fp.done = done;
       if (has('afterburner') && !st.ab) act.afterburner();   // full reheat for the take-off roll
     }
+    // during the strike the camera eases back so the weapons and their targets are in frame, then comes back in
+    let camK = 1;
+    function pullCamera(k: number) {
+      const r = k / camK; if (Math.abs(r - 1) < 1e-5) return; camK = k;
+      const cam = E.camera, t = E.controls.target;
+      if ((cam as THREE.OrthographicCamera).isOrthographicCamera) { cam.zoom /= r; cam.updateProjectionMatrix(); }
+      else { cam.position.sub(t).multiplyScalar(r).add(t); E.controls.maxDistance = Math.max(E.controls.maxDistance, cam.position.distanceTo(t) * 1.05); }
+    }
     /** the demo was stopped part-way: the jet comes back over its spot (still flying if it was airborne) */
     function abortFlight() {
+      pullCamera(1);
       const keep = st.alt > 0.05 ? Math.min(ALT_MAX, st.alt) : 0;
       E.track(fp.cam.clone().negate());                 // the camera goes back to its usual framing over the apron
-      fp.on = false; st.alt = keep; st.ab = false; st.brake = false;
+      fp.on = false; st.alt = keep; st.ab = false; st.brake = false; st.bayMain = st.baySide = false;
+      strike?.reset();
       R.craft.position.x = R.craft.position.z = 0;
     }
     /** one frame of the circuit: advance along it at the speed it calls for, fire its events */
@@ -131,8 +143,14 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       const m = C.marks, dw = m.downwind[1] - m.downwind[0];
       once('gearUp', fp.s >= m.liftoff + 12 * u, () => { st.gear = false; snd.motor(2, false); });
       once('reheatOff', fp.s >= m.climbed, () => { if (st.ab) act.afterburner(); });
-      once('baysOpen', fp.s >= m.downwind[0] + 0.3 * dw, () => { if (!st.bayMain && !st.baySide) act.bays(); });
-      once('baysShut', fp.s >= m.downwind[0] + 0.7 * dw, () => { if (st.bayMain || st.baySide) act.bays(); });
+      if (strike) {                                    // the strike opens each bay when its weapons are needed
+        const w = strike.bays(fp.s);
+        if (w.main !== st.bayMain) { st.bayMain = w.main; snd.motor(1.2, w.main); }
+        if (w.side !== st.baySide) { st.baySide = w.side; snd.motor(1.2, w.side); }
+      } else {
+        once('baysOpen', fp.s >= m.downwind[0] + 0.3 * dw, () => { if (!st.bayMain && !st.baySide) act.bays(); });
+        once('baysShut', fp.s >= m.downwind[0] + 0.7 * dw, () => { if (st.bayMain || st.baySide) act.bays(); });
+      }
       once('gearDown', fp.s >= m.finalTurn, () => { st.gear = true; snd.motor(2, true); });
       once('touchdown', fp.s >= m.touchdown, () => { voice.touchdown(); if (!st.brake) act.brake(); });
       const q = C.at(fp.s);
@@ -142,6 +160,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       if (fp.s >= C.length) {
         fp.on = false; st.auto.pitch = st.auto.roll = 0;
         if (st.brake) act.brake();
+        strike?.reset();                               // back on the spot: weapons reloaded, the range cleared
         const d = fp.done; fp.done = null; d?.();
       }
       return q;
@@ -213,7 +232,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       real = {
         skin: X.skin, focus: X.focus, size: X.size, markings: { stopZ: X.stopZ, runway: C.runway }, follow: R.craft, hide: R.stage ? [R.stage] : [], only: X.only,
         lamps: [[L.stripMat, 'slime'], [L.navMat, 'nav'], [L.beaconMat, 'red'], [L.taxiMat, 'white']],
-        onStyle(on) { if (!on) { plumes.forEach(p => p.set(0, 0)); dry.forEach(p => p.set(0, 0)); abLight.intensity = 0; } },
+        onStyle(on) { strike?.setReal(on); if (!on) { plumes.forEach(p => p.set(0, 0)); dry.forEach(p => p.set(0, 0)); abLight.intensity = 0; } },
         tick(now, mats) {
           const ab = st.abT * clamp01((st.rpm - 0.8) / 0.2);
           plumes.forEach(p => p.set(ab, now));
@@ -280,12 +299,18 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
         R.craft.rotation.set(-q.pitch * DEG, q.psi, q.bank * DEG, 'YXZ');
         const to = new THREE.Vector3(q.x, q.alt, q.z);
         E.track(to.clone().sub(fp.cam)); fp.cam.copy(to);
-      } else {
+      }
+      if (strike) {
+        const m = C.marks, wide = fp.on && fp.s > m.downwind[0] - 80 * u && fp.s < m.downwind[1] + 20 * u;
+        pullCamera(camK + ((wide ? 2.4 : 1) - camK) * Math.min(1, dt * 0.8));
+      }
+      if (!q) {
         R.craft.position.y = R.cgY + st.alt + Math.sin(now / 900) * 0.05 * a;
         const bank = st.hover ? 8 : 24, yawK = st.hover ? 14 : 4;
         R.craft.rotation.set((-st.p * 7 - (st.hover ? 1 : 2.5) * a) * DEG * a, -st.y * yawK * DEG * a, st.r * bank * DEG * a, 'YXZ');
       }
       for (const f of followers) { f.o.position.x = f.x + R.craft.position.x; f.o.position.z = f.z + R.craft.position.z; }
+      strike?.update(now, dt, fp.on ? fp.s : -1, st.bayMainT, st.baySideT);
 
       // lights
       const flash = st.lights && now % 1100 < 140;

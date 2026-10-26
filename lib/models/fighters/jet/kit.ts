@@ -23,11 +23,12 @@ export function makeKit(E: Engine, noseZ: number, cgY: number) {
   /** a store on an extending launcher arm, stowed at `at`; returns what pose() moves */
   const launcher = (parent: THREE.Object3D, geo: THREE.BufferGeometry, at: V, len: number, drop: number, seekerR: number) => {
     const g = new THREE.Group(); g.position.copy(at); parent.add(g);
-    add(g, geo);
-    const glow = seekerR > 0 ? S.seeker(g, new THREE.Vector3(0, 0, len * 0.47), seekerR) : null;
+    const store = new THREE.Group(); g.add(store);              // the missile and its seeker: what is released
+    add(store, geo);
+    const glow = seekerR > 0 ? S.seeker(store, new THREE.Vector3(0, 0, len * 0.47), seekerR) : null;
     const railGeo = new THREE.BoxGeometry(0.05, 1, Math.min(1.3, len * 0.4)); railGeo.translate(0, 0.5, 0);
     const rail = add(g, railGeo, undefined, { real: 'strut' });
-    return { g, rail, drop, y0: at.y, glow };
+    return { g, rail, drop, y0: at.y, glow, store };
   };
 
   // light strips: thin emissive bands a hair off the skin, with a few glow points each

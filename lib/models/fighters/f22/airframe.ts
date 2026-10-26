@@ -6,7 +6,7 @@ import type { Engine } from '../../../iso/engine';
 import { Geo, loft, slab, rectRing, merge } from '../../../iso/geo';
 import { makeKit, DEG, SIDES, PLATE, ease, clamp01 } from '../jet/kit';
 import { buildApron } from '../../../stages/apron';
-import type { Hinge, JetRig, JetState } from '../jet/types';
+import { store, type Hinge, type JetRig, type JetState } from '../jet/types';
 import { cockpitMaterials, cockpitMesh, consoleBox, ejectionSeat, glareshield, hud, instrumentPanel, sideStick, throttles } from '../jet/cockpit';
 import { decalMaterial, decalTexture, layDecal, lowVisStarAndBar, profileAt } from '../../../real/decals';
 
@@ -295,11 +295,14 @@ export function buildRaptor(E: Engine): JetRig {
     bayDoor.push(h);
   }
   well(pBay, [P(-0.75, bellyY(s0) - 0.003, s0), P(0.75, bellyY(s0) - 0.003, s0), P(0.75, bellyY(s1) - 0.003, s1), P(-0.75, bellyY(s1) - 0.003, s1)], new THREE.Vector3(0, -1, 0), 'bay');
-  const amraam = missileGeo(3.5, 0.09, 0.16, true);
-  // LAU-142/A launchers: each arm extends to push its missile below the open doors
-  const bayMissiles = ([[0.22, 0.8], [-0.22, 0.8], [0.53, 1.04], [-0.53, 1.04]] as const)
-    .map(([x, drop]) => launcher(pBay, amraam, P(x, bellyY(8.75) + 0.2, 8.75), 3.5, drop, 0.045));
+  const amraam = missileGeo(3.5, 0.09, 0.16, true), jdam = missileGeo(3.8, 0.18, 0.2, true);
+  // the strike load: two AIM-120s inboard on LAU-142/A launchers and two 1,000 lb GBU-32 JDAMs outboard; each arm
+  // extends to push its store below the open doors (the bombs carry no seeker: they are GPS-guided)
+  const bayMissiles = ([[0.22, 0.8, 1], [-0.22, 0.8, 1], [0.53, 1.04, 0], [-0.53, 1.04, 0]] as const)
+    .map(([x, drop, aim]) => launcher(pBay, aim ? amraam : jdam, P(x, bellyY(8.75) + (aim ? 0.2 : 0.27), 8.75), aim ? 3.5 : 3.8, drop, aim ? 0.045 : 0));
+  const bayGlows = seekerGlows.length;
   const sideDoor: Record<number, Hinge> = {}, sideRack: Record<number, Hinge> = {};
+  const srms: THREE.Group[] = [];                                  // each heat-seeker with its seeker: what is released
   const sidewinder = missileGeo(2.9, 0.064, 0.13, false);
   for (const k of SIDES) {
     const a = 7.4, b = 10.0, f0 = 0.12, f1 = 0.86;
@@ -314,8 +317,9 @@ export function buildRaptor(E: Engine): JetRig {
     const down = wallPt(k, 8.7, 1).sub(wallPt(k, 8.7, 0)).normalize(), inward = wn(8.7).negate();
     const mPos = piv.clone().addScaledVector(down, 0.62).addScaledVector(inward, 0.1);
     const mg = sidewinder.clone(); mg.translate(mPos.x, mPos.y, mPos.z);
-    add(sideRack[k].inner, mg);
-    K.seeker(sideRack[k].inner, mPos.clone().add(new THREE.Vector3(0, 0, 2.9 * 0.47)), 0.035);
+    const srm = new THREE.Group(); sideRack[k].inner.add(srm); srms.push(srm);
+    add(srm, mg);
+    K.seeker(srm, mPos.clone().add(new THREE.Vector3(0, 0, 2.9 * 0.47)), 0.035);
     add(sideRack[k].inner, brace(piv, mPos.clone().addScaledVector(down, -0.07), 0.025), undefined, { real: 'strut' });
   }
 
@@ -427,12 +431,13 @@ export function buildRaptor(E: Engine): JetRig {
     const sd = ease(clamp01(st.baySideT / 0.5)), sm = ease(clamp01((st.baySideT - 0.4) / 0.6));
     for (const s of SIDES) { sideDoor[s].set(s * 112 * DEG * sd); sideRack[s].set(s * 62 * DEG * sm); }
     seekerMat.emissiveIntensity = bm > 0.98 || sm > 0.98 ? 1.6 : 0;
-    seekerGlows.forEach((gl, i) => { gl.material.uniforms.intensity.value = (i < 4 ? bm : sm) > 0.98 ? 0.8 : 0; });
+    seekerGlows.forEach((gl, i) => { gl.material.uniforms.intensity.value = (i < bayGlows ? bm : sm) > 0.98 ? 0.8 : 0; });
     canopyH.set(-38 * DEG * ease(st.canopyT));
     refuelDoor.set(-62 * DEG * ease(st.refuelT));
   }
 
   return {
+    stores: [...bayMissiles.map((m, i) => store(i < 2 ? 'aam' : 'bomb', m.store, 'main')), ...srms.map(o => store('srm', o, 'side'))],
     craft, cgY: 2.2, parts, screen, pose, altMax: 3.6, engines: 2, stage: apron.deck,
     // realistic style: light silver-grey coating with soft darker patches and a metallic sheen, subtle panels,
     // lighter edge bands, low-visibility markings; plumes leave the 2D nozzles

@@ -61,7 +61,7 @@ export function circuit(u: number) {
 
   return {
     length, at, speed, VC, u,
-    marks: { rotate: ROLL, liftoff, climbed, downwind: [legs[2].s, legs[2].s + legs[2].len] as const, finalTurn: legs[3].s, glide, touchdown, flare: touchdown - 60 * u },
+    marks: { rotate: ROLL, liftoff, climbed, turn: legs[1].s, downwind: [legs[2].s, legs[2].s + legs[2].len] as const, finalTurn: legs[3].s, glide, touchdown, flare: touchdown - 60 * u },
     /** the runway under the circuit: threshold behind the touchdown point to well past the lift-off point */
     runway: { z0: -RO - 130 * u, z1: liftoff + 230 * u, w: 32 * u },
   };

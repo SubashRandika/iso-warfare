@@ -11,7 +11,7 @@ import type { Engine } from '../../../iso/engine';
 import { Geo, loft, slab, rectRing, merge } from '../../../iso/geo';
 import { makeKit, DEG, SIDES, PLATE, ease, clamp01 } from '../jet/kit';
 import { buildApron } from '../../../stages/apron';
-import type { Hinge, JetRig, JetState } from '../jet/types';
+import { store, type Hinge, type JetRig, type JetState } from '../jet/types';
 import { cockpitMaterials, cockpitMesh, consoleBox, ejectionSeat, glareshield, hud, instrumentPanel, sideStick, throttles } from '../jet/cockpit';
 import { decalMaterial, decalTexture, layDecal, profileAt, starPath } from '../../../real/decals';
 
@@ -311,9 +311,12 @@ export function buildDragon(E: Engine): JetRig {
   }
   well(pBay, [P(-BW, bellyY(B0) - 0.003, B0), P(BW, bellyY(B0) - 0.003, B0), P(BW, bellyY(B1) - 0.003, B1), P(-BW, bellyY(B1) - 0.003, B1)], DOWN, 'bay');
   // four long-range missiles side by side; the inner pair drops further so the fins clear the outer pair
-  const pl15 = missileGeo(3.9, 0.1, 0.2, true);
-  const bayMissiles = [[0.22, 0.95], [-0.22, 0.95], [0.62, 0.72], [-0.62, 0.72]].map(([x, drop]) => launcher(pBay, pl15, P(x, bellyY(BM) + 0.22, BM), 3.9, drop, 0.05));
+  // the outer pair are guided bombs here (no seeker glow), for the strike
+  const pl15 = missileGeo(3.9, 0.1, 0.2, true), bomb = missileGeo(3.2, 0.16, 0.12, true);
+  const bayMissiles = [[0.22, 0.95, 1], [-0.22, 0.95, 1], [0.62, 0.72, 0], [-0.62, 0.72, 0]].map(([x, drop, aim]) => launcher(pBay, aim ? pl15 : bomb, P(x, bellyY(BM) + (aim ? 0.22 : 0.28), BM), aim ? 3.9 : 3.2, drop, aim ? 0.05 : 0));
+  const bayGlows = seekerGlows.length;
   const sideDoor: Record<number, Hinge> = {}, sideRack: Record<number, Hinge> = {};
+  const srms: THREE.Group[] = [];                                  // each heat-seeker with its seeker: what is released
   const pl10 = missileGeo(2.9, 0.064, 0.13, false);
   for (const k of SIDES) {
     const a = 8.55, b = 11.45, sm = (a + b) / 2, x = k * 1.5, yT = 2.12, yB = 1.66;
@@ -324,8 +327,9 @@ export function buildDragon(E: Engine): JetRig {
     const piv = P(k * 1.28, 2.18, sm), mPos = P(k * 1.3, 1.84, sm);
     sideRack[k] = hinge(pSide, piv, Z, 'z');
     const mg = pl10.clone(); mg.translate(mPos.x, mPos.y, mPos.z);
-    add(sideRack[k].inner, mg);
-    K.seeker(sideRack[k].inner, mPos.clone().add(new THREE.Vector3(0, 0, 2.9 * 0.47)), 0.035);
+    const srm = new THREE.Group(); sideRack[k].inner.add(srm); srms.push(srm);
+    add(srm, mg);
+    K.seeker(srm, mPos.clone().add(new THREE.Vector3(0, 0, 2.9 * 0.47)), 0.035);
     add(sideRack[k].inner, brace(piv, mPos.clone().add(new THREE.Vector3(0, 0.07, 0)), 0.025), undefined, { real: 'strut' });
   }
 
@@ -433,12 +437,13 @@ export function buildDragon(E: Engine): JetRig {
     const sd = ease(clamp01(st.baySideT / 0.5)), sm = ease(clamp01((st.baySideT - 0.4) / 0.6));
     for (const s of SIDES) { sideDoor[s].set(s * 110 * DEG * sd); sideRack[s].set(s * 70 * DEG * sm); }
     seekerMat.emissiveIntensity = bm > 0.98 || sm > 0.98 ? 1.6 : 0;
-    seekerGlows.forEach((gl, i) => { gl.material.uniforms.intensity.value = (i < bayMissiles.length ? bm : sm) > 0.98 ? 0.8 : 0; });
+    seekerGlows.forEach((gl, i) => { gl.material.uniforms.intensity.value = (i < bayGlows ? bm : sm) > 0.98 ? 0.8 : 0; });
     canopyH.set(-38 * DEG * ease(st.canopyT));
     probe.set(19 * DEG * (1 - ease(st.refuelT)));
   }
 
   return {
+    stores: [...bayMissiles.map((m, i) => store(i < 2 ? 'aam' : 'bomb', m.store, 'main')), ...srms.map(o => store('srm', o, 'side'))], airTarget: 'awacs',
     craft, cgY: 2.25, parts, screen, pose, altMax: 3.8, engines: 2, stage: apron.deck,
     // realistic style: light grey with large soft medium-grey patches, light grey bands on every edge, bare metal
     // nozzles, low-visibility insignia; the plumes leave the serrated nozzles
