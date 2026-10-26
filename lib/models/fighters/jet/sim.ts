@@ -8,7 +8,7 @@ import type { RealSpec } from '../../../real/types';
 import { makePlume } from '../../../real/plume';
 import { approach, clamp01 } from '../../../core/anim';
 import { Turbofan } from './turbofan';
-import { circuit, runwayLines } from './circuit';
+import { circuit } from './circuit';
 import { createStrike } from './strike';
 import type { JetRig, JetState } from './types';
 
@@ -37,6 +37,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
     const airborne = () => !st.gear || st.hover || st.alt > 0.05;
     const { later, when } = script;
     const endDemo = () => script.end();
+    let realOn = false;                                // the demo flies (and attacks) only in the Real view
 
     // ── actions ──
     const act = {
@@ -107,8 +108,16 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
           if (st.canopy) act.canopy();
           later(600, () => { if (!st.eng) act.engines(); });
           later(2900, () => act.check());
-          // a full circuit from the runway; the F-35B then shows its hover on the spot
-          later(9000, () => when(() => st.rpm >= 0.9 && st.canopyT === 0 && st.checkT < 0, () => fly(() => has('stovl') ? hover() : endDemo())));
+          // Real view: a full circuit from the runway with the strike, then the F-35B's hover on the spot.
+          // Line view: the jet stays on the apron and shows its bays instead.
+          later(9000, () => when(() => st.rpm >= 0.9 && st.canopyT === 0 && st.checkT < 0, () => {
+            if (realOn) return fly(() => has('stovl') ? hover() : endDemo());
+            say('flight and strike: real view · key h');
+            act.bays();
+            when(() => st.bayMainT > 0.99 || st.baySideT > 0.99, () => later(1500, () => {
+              act.bays(); when(() => st.bayMainT < 0.01 && st.baySideT < 0.01, endDemo);
+            }));
+          }));
         });
       },
     } satisfies Record<string, () => void>;
@@ -128,10 +137,11 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       if ((cam as THREE.OrthographicCamera).isOrthographicCamera) { cam.zoom /= r; cam.updateProjectionMatrix(); }
       else { cam.position.sub(t).multiplyScalar(r).add(t); E.controls.maxDistance = Math.max(E.controls.maxDistance, cam.position.distanceTo(t) * 1.05); }
     }
-    /** the demo was stopped part-way: the jet comes back over its spot (still flying if it was airborne) */
-    function abortFlight() {
+    /** the demo was stopped part-way: the jet comes back over its spot (still flying if it was airborne, unless `ground`) */
+    function abortFlight(ground = false) {
       pullCamera(1);
-      const keep = st.alt > 0.05 ? Math.min(ALT_MAX, st.alt) : 0;
+      const keep = st.alt > 0.05 && !ground ? Math.min(ALT_MAX, st.alt) : 0;
+      if (ground) { st.gear = true; st.gearT = st.gearDoorT = 1; }
       E.track(fp.cam.clone().negate());                 // the camera goes back to its usual framing over the apron
       fp.on = false; st.alt = keep; st.ab = false; st.brake = false; st.bayMain = st.baySide = false;
       strike?.reset();
@@ -165,9 +175,7 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       }
       return q;
     }
-    // the runway in the hairline view, and the jet's soft shadow and taxi-light pool, which follow it
-    const rwy = runwayLines(E, C.runway, L.padLightMat, 0);
-    (R.stage ?? E.scene).add(rwy.group);
+    // the jet's soft shadow and taxi-light pool follow it
     const followers: { o: THREE.Object3D; x: number; z: number }[] = [];
     R.stage?.traverse(o => { const mm = (o as THREE.Mesh).material; if (mm === L.shadowMat || mm === L.taxiPoolMat) followers.push({ o, x: o.position.x, z: o.position.z }); });
 
@@ -232,7 +240,13 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       real = {
         skin: X.skin, focus: X.focus, size: X.size, markings: { stopZ: X.stopZ, runway: C.runway }, follow: R.craft, hide: R.stage ? [R.stage] : [], only: X.only,
         lamps: [[L.stripMat, 'slime'], [L.navMat, 'nav'], [L.beaconMat, 'red'], [L.taxiMat, 'white']],
-        onStyle(on) { strike?.setReal(on); if (!on) { plumes.forEach(p => p.set(0, 0)); dry.forEach(p => p.set(0, 0)); abLight.intensity = 0; } },
+        onStyle(on) {
+          realOn = on; strike?.setReal(on);
+          if (!on && script.active && (fp.on || airborne())) {   // no flying demo in the Line view: back on the apron
+            script.stop();
+            if (fp.on) abortFlight(true); else { st.hover = false; st.gear = true; }
+          }
+          if (!on) { plumes.forEach(p => p.set(0, 0)); dry.forEach(p => p.set(0, 0)); abLight.intensity = 0; } },
         tick(now, mats) {
           const ab = st.abT * clamp01((st.rpm - 0.8) / 0.2);
           plumes.forEach(p => p.set(ab, now));
@@ -321,7 +335,6 @@ export function jetModel(build: (E: Engine) => JetRig, opts: JetOptions): ModelF
       L.taxiMat.emissiveIntensity = taxi ? 1.8 : 0; L.taxiGlow.material.uniforms.intensity.value = taxi ? 0.9 : 0;
       L.taxiPoolMat.uniforms.opacity.value = taxi ? 0.38 * (1 - clamp01(st.alt / 2.5)) : 0;
       L.padLightMat.emissiveIntensity = st.lights ? 1.5 : 0; L.padGlow.material.uniforms.intensity.value = st.lights ? 0.8 : 0;
-      rwy.glow.material.uniforms.intensity.value = st.lights ? 0.8 : 0;
       L.shadowMat.uniforms.opacity.value = E.shadowStrength() * (1 - clamp01(st.alt / 14));
       L.cockpitLight.intensity = st.rpm > 0.04 || st.lights ? 2.5 : 0;
       drawScreen();

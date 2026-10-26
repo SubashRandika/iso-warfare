@@ -105,12 +105,14 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 
 ## The jets' demo and sound
 
-- Every jet's demo flies a real circuit from a runway (`lib/models/fighters/jet/circuit.ts`): take-off roll, rotation,
+- In the Real view every jet's demo flies a real circuit from a runway (`lib/models/fighters/jet/circuit.ts`): take-off roll, rotation,
   climb, two banked 180° turns, final with gear down, flare, touchdown and a roll-out that stops on the parking
   spot. Distances and speeds scale with `view.dist / 36`, so bombers take longer runs and every jet takes ~44 s.
   The craft really moves; `E.track(delta)` moves the orbit target and camera with it (the user can still orbit),
-  `RealSpec.follow` moves the sun's shadow box, `markings.runway` paints the runway, and the hairline runway and the
-  soft shadow come from the sim. Stopping the demo part-way puts the jet back over its spot. The F-35B then hovers.
+  `RealSpec.follow` moves the sun's shadow box, `markings.runway` paints the runway, and the soft shadow follows from the
+  sim. Stopping the demo part-way puts the jet back over its spot. The F-35B then hovers. The Line view never flies or
+  attacks: its demo stays on the apron (start-up, control check, bays open and shut), and switching to Line mid-flight
+  stops the demo and sets the jet back down on its spot (the sim tracks the style through `onStyle`).
 - On the circuit's downwind leg the demo flies a strike (`jet/strike.ts`) with the weapons the airframe lists in
   `JetRig.stores` (`store(kind, obj, bay)`: 'aam' radar missiles, 'srm' side-bay heat-seekers, 'bomb', 'cruise'):
   a generic range of shelters, bunkers, a radar site and fuel tanks beside the leg, target drones head-on (a large

@@ -4,7 +4,6 @@
 // Everything scales with `u` (the airframe's size relative to a fighter), so a bomber takes a longer run at higher
 // speed and every jet takes about the same time. Positions are in metres from the parking spot (x left, z forward).
 import * as THREE from 'three';
-import type { Engine } from '../../../iso/engine';
 
 const ss = (t: number) => { const x = THREE.MathUtils.clamp(t, 0, 1); return x * x * (3 - 2 * x); };
 
@@ -67,22 +66,3 @@ export function circuit(u: number) {
   };
 }
 export type Circuit = ReturnType<typeof circuit>;
-
-/** the runway in the hairline style: edge lines, a dashed centre line, threshold bars and edge lights */
-export function runwayLines(E: Engine, rw: { z0: number; z1: number; w: number }, lampMat: THREE.Material, skipZ: number) {
-  const g = new THREE.Group(), major: number[] = [], minor: number[] = [], k = rw.w / 45, y = 0.006;
-  const seg = (arr: number[], x0: number, z0: number, x1: number, z1: number) => arr.push(x0, y, z0, x1, y, z1);
-  for (const x of [-rw.w / 2, rw.w / 2]) seg(major, x, rw.z0, x, rw.z1);
-  seg(major, -rw.w / 2, rw.z0, rw.w / 2, rw.z0); seg(major, -rw.w / 2, rw.z1, rw.w / 2, rw.z1);
-  for (let z = rw.z0 + 60 * k; z < rw.z1 - 60 * k; z += 50 * k) if (Math.abs(z - skipZ) > 40 * k) seg(minor, 0, z, 0, z + 30 * k);
-  for (const [z, dir] of [[rw.z0, 1], [rw.z1, -1]]) for (let i = 0; i < 8; i++) for (const sx of [-1, 1]) {
-    const x = sx * (3 * k + i * 2.6 * k); seg(minor, x, z + dir * 6 * k, x, z + dir * 36 * k);
-  }
-  g.add(E.fat(major, E.mats.major), E.fat(minor, E.mats.line));
-  const pts: THREE.Vector3[] = [];
-  for (let z = rw.z0; z <= rw.z1 + 0.1; z += 60 * k) for (const x of [-rw.w / 2 - 1, rw.w / 2 + 1]) pts.push(new THREE.Vector3(x, 0.05, z));
-  const geo = new THREE.SphereGeometry(0.08 * Math.max(1, k), 12, 8);
-  pts.forEach(p => { const m = new THREE.Mesh(geo, lampMat); m.position.copy(p); m.raycast = () => {}; g.add(m); });
-  const glow = E.glowPoints(pts.map(p => p.clone().setY(0.08)), 1.4); g.add(glow);
-  return { group: g, glow };
-}
