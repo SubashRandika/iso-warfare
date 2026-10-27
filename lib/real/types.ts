@@ -63,4 +63,24 @@ export interface RealSpec {
   onStyle?(real: boolean): void;
   /** every frame while the real style is on: drive emissive heat, plumes and the like */
   tick?(now: number, mats: RealMaterials): void;
+  /**
+   * an indoor set (the shooting range): while this returns a value the stage lights the scene from it instead of the
+   * time of day. Polled every frame; it is applied again whenever the returned object changes (return the same
+   * object while nothing changes)
+   */
+  stage?(): StageOverride | null;
+}
+
+export interface StageOverride {
+  /** show the sky dome (false indoors; the concrete ground stays as the floor) */
+  sky: boolean;
+  /** what lights and reflects: the sky, or a lit room (three's RoomEnvironment) */
+  env: 'sky' | 'room';
+  envI: number;
+  exposure: number;
+  fog: { color: number; density: number } | null;
+  bloom: number;
+  bloomT: number;
+  /** the sun stands in for the house lights: direction toward it, strength, colour, and the shadow box (half-size) */
+  sun: { dir: THREE.Vector3; intensity: number; color: number; focus: THREE.Vector3; size: number };
 }

@@ -8,6 +8,7 @@ import type { ModelCtx, ModelFactory } from './types';
 import { Sound } from './sound';
 import { createScript } from './script';
 import type { Realism } from '../real/stage';
+import type { RangeHud } from '../range/hud';
 
 export interface Snapshot {
   model: string; theme: Theme; accent: AccentId; spin: boolean; iso: boolean; sound: boolean;
@@ -16,6 +17,8 @@ export interface Snapshot {
   selected: string | null;
   on: Record<string, boolean>;
   readout: string;
+  /** a game overlay (the shooting range) */
+  hud: RangeHud | null;
 }
 export type ViewCommand = 'iso' | 'theme' | 'spin' | 'sound' | 'real';
 
@@ -42,7 +45,7 @@ export function createViewer(host: HTMLElement, def: ModelDef, factory: ModelFac
     return Math.sin(t * Math.PI * 2 * 1.25) * (1 - t / 1.6);
   };
   const listed = new Set(def.actions.map(a => a.id));
-  const ctx: ModelCtx = { E, snd, def, script, say, wig, has: a => listed.has(a) };
+  const ctx: ModelCtx = { E, snd, def, script, say, wig, has: a => listed.has(a), style: on => { void setReal(on); } };
   const M = factory(ctx);
   E.setPickRoot(M.pickRoot);
   const passive = new Set(['demo', ...(M.passive ?? [])]);
@@ -134,7 +137,7 @@ export function createViewer(host: HTMLElement, def: ModelDef, factory: ModelFac
     return {
       model: def.id, theme: E.theme, accent: E.accentId, spin: E.spin, iso: E.iso, sound: snd.enabled, selected,
       style: !M.real ? null : realLoading ? 'loading' : realism?.on ? 'real' : 'line',
-      on: M.on(), readout: msg ? (r ? r + ' · ' : '') + msg : r,
+      on: M.on(), readout: msg ? (r ? r + ' · ' : '') + msg : r, hud: M.hud?.() ?? null,
     };
   }
   let sig = '';

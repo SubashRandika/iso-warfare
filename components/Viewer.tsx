@@ -6,6 +6,7 @@ import { categoryOf, DEFAULT_MODEL, getModel, hasModel, modelsIn } from '@/lib/c
 import { ACCENTS } from '@/lib/iso/accents';
 import Armory from './Armory';
 import { COUNTRY_NAMES, Flag } from './Flag';
+import RangeHud from './RangeHud';
 
 const MODEL_KEY = 'iso-warfare-model';
 /** ?model=, then the last one opened (older links and saves used ?jet= / iso-warfare-jet) */
@@ -80,12 +81,17 @@ export default function Viewer() {
     while (i < t.length - 1 && t[i].length <= 2) i++;
     return { keys: t.slice(0, i), label: t.slice(i).join(' ') };
   });
+  // a game overlay (the shooting range) replaces the viewer's panels while it shows
+  const range = snap?.hud ?? null;
   const status = failed ? [`${def.name} failed to load`, 'reload the page to retry'] : snap ? snap.readout.split(' · ') : ['loading'];
 
   return (
     <>
-      <div ref={host} className="stage" aria-label={`Interactive 3D ${def.name}. Drag to orbit, click parts to operate them.`} role="img" />
+      <div ref={host} className={range ? 'stage ranging' : 'stage'} role="img"
+        aria-label={range ? `Shooting range, lane ${range.lane}. Click to take control; Escape leaves.` : `Interactive 3D ${def.name}. Drag to orbit, click parts to operate them.`} />
 
+      {range && <RangeHud h={range} />}
+      {!range && <>
       <header className="ui top">
         <div className="lead">
           <div className="brand">
@@ -175,6 +181,7 @@ export default function Viewer() {
       </ul>
       <a className="ui credit" href="https://iso-glow.vercel.app" target="_blank" rel="noopener noreferrer">Made with ISO-GLOW ↗</a>
       <div className="ui read" aria-live="off" role="status">{status.map((s, i) => <span key={i}>{s}</span>)}</div>
+      </>}
     </>
   );
 }

@@ -6,7 +6,11 @@
 // The side profiles are traced from a left-side photograph at 0.251 mm per pixel (203 mm overall): a 24 mm slide, a
 // grip about 51 mm front to back raked about 13°, and rounded edges (fine steps, so no crease lines along them).
 // Accent (live) parts: the tritium sight dots and the muzzle flash.
-// Real view: coyote-tan slide and grip module, black controls, stainless fire control unit, brass cases on a bench mat.
+// Real view: coyote-tan slide and grip module and coyote-anodised controls and trigger, as issued; the black chamber
+// hood in the ejection port with its calibre engraved, the extractor, the stainless serial plate and the moulded
+// markings, a crowned barrel, chequering on the guard; moulded, bead-blasted and stippled finishes; brass cases.
+// Range (key G, Real view): the pistol is taken up in gloved hands on lane 3 of an indoor range (lib/range/), where
+// this file supplies the sights, the grip and the mechanics and the range does the shooting, targets and drill.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import type { ModelFactory } from '../../../core/types';
@@ -15,7 +19,10 @@ import { loft, merge } from '../../../iso/geo';
 import { makeKit } from '../../../kit/build';
 import { buildPlate } from '../../../stages/plate';
 import { makePlume } from '../../../real/plume';
+import { decalMaterial, decalTexture } from '../../../real/decals';
 import type { RealSpec } from '../../../real/types';
+import type { RangeGun } from '../../../range/types';
+import type { Range } from '../../../range/range';
 
 const CAP = 17;
 const SLIDE_BACK = 0.034, LOCK_BACK = 0.03, STRIP_FWD = 0.205;
@@ -112,11 +119,23 @@ function realMaterials() {
     for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) { x.beginPath(); x.arc(px + ox, py + oy, r, 0, Math.PI * 2); x.fill(); }
   }
   const stip = new THREE.CanvasTexture(c); stip.wrapS = stip.wrapT = THREE.RepeatWrapping; stip.repeat.set(40, 40); stip.colorSpace = THREE.NoColorSpace;
+  // fine grain for the moulded polymer and the bead-blasted coating: soft value noise, a few hundredths of a mm
+  const grain = (() => {
+    const g = document.createElement('canvas'); g.width = g.height = 128;
+    const y = g.getContext('2d')!, img = y.createImageData(128, 128);
+    for (let i = 0; i < img.data.length; i += 4) { const v = 118 + Math.random() * 20; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+    y.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(g); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(220, 220); t.colorSpace = THREE.NoColorSpace;
+    return t;
+  })();
   return {
-    polymer: std({ color: 0x8e7654, roughness: 0.72 }),                                     // coyote grip module
-    stipple: std({ color: 0x86704f, roughness: 0.9, bumpMap: stip, bumpScale: 0.6, side: THREE.DoubleSide }),
+    // the grip module is a shade lighter and pinker than the slide's coating, as on the issued pistol
+    polymer: std({ color: 0x9a7953, roughness: 0.78, bumpMap: grain, bumpScale: 0.25 }),
+    stipple: std({ color: 0x92734f, roughness: 0.92, bumpMap: stip, bumpScale: 0.9, side: THREE.DoubleSide }),
     groove: std({ color: 0x3b3226, roughness: 0.9, side: THREE.DoubleSide }),
-    slide: new THREE.MeshPhysicalMaterial({ color: 0x9a8058, metalness: 0.3, roughness: 0.46, clearcoat: 0.12, clearcoatRoughness: 0.6 }),   // coyote PVD
+    slide: new THREE.MeshPhysicalMaterial({ color: 0x8a6a40, metalness: 0.35, roughness: 0.5, bumpMap: grain, bumpScale: 0.15, clearcoat: 0.1, clearcoatRoughness: 0.6 }),   // coyote PVD
+    coyote: std({ color: 0x7e6340, metalness: 0.6, roughness: 0.4 }),                     // anodised controls and trigger
+    hood: std({ color: 0x1b1c1e, metalness: 0.6, roughness: 0.42, side: THREE.DoubleSide }),   // nitrided chamber hood
     barrel: std({ color: 0x6a573f, metalness: 0.75, roughness: 0.34 }),
     steel: std({ color: 0xb4b8bb, metalness: 1, roughness: 0.3 }),                          // stainless chassis
     blackSteel: std({ color: 0x17181a, metalness: 0.55, roughness: 0.5 }),
@@ -126,7 +145,7 @@ function realMaterials() {
   };
 }
 
-const model: ModelFactory = ({ E, snd, script, say }) => {
+const model: ModelFactory = ({ E, snd, script, say, style }) => {
   const K = makeKit(E, { unit: 0.02 });
   const { add, part, hinge, box, well, lines } = K;
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -154,7 +173,7 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
   // ═════ trigger, safety, slide stop, takedown lever, magazine release ═════
   const pTrig = part('trigger', gun);
   const trig = hinge(pTrig, V(0, 0.083, 0.0829), V(1, 0, 0), 'x');
-  add(trig.inner, across(profile(TRIGGER), -0.003, 0.003, 0.0006, 4), undefined, { real: 'blackSteel' });
+  add(trig.inner, across(profile(TRIGGER), -0.003, 0.003, 0.0006, 4), undefined, { real: 'coyote' });
   const pSafe = part('safety', gun), safeH: ReturnType<typeof hinge>[] = [];
   const pStop = part('slideStop', gun), stopG = new THREE.Group(); pStop.add(stopG);
   const pTake = part('takedown', gun), takeH: ReturnType<typeof hinge>[] = [];
@@ -162,25 +181,27 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
   const lever = (cmds: Cmd[], k: number, x0: number, t: number) => across(profile(cmds), k > 0 ? x0 : -x0 - t, k > 0 ? x0 + t : -x0, 0.0005, 4);
   for (const k of SIDES) {                                        // safety and slide stop on both sides, takedown on the left
     const h = hinge(pSafe, V(k * 0.0126, 0.0984, 0.0290), V(1, 0, 0), 'x'); safeH.push(h);
-    add(h.inner, lever(SAFETY, k, 0.0126, 0.0022), undefined, { real: 'blackSteel' });
-    add(stopG, lever(CATCH, k, FW, 0.0017), undefined, { real: 'blackSteel' });
-    if (k > 0) { const t = hinge(pTake, V(FW, 0.0996, 0.0840), V(1, 0, 0), 'x'); takeH.push(t); add(t.inner, lever(TAKEDOWN, k, FW, 0.0021), undefined, { real: 'blackSteel' }); }
+    add(h.inner, lever(SAFETY, k, 0.0126, 0.0022), undefined, { real: 'coyote' });
+    add(stopG, lever(CATCH, k, FW, 0.0017), undefined, { real: 'coyote' });
+    if (k > 0) { const t = hinge(pTake, V(FW, 0.0996, 0.0840), V(1, 0, 0), 'x'); takeH.push(t); add(t.inner, lever(TAKEDOWN, k, FW, 0.0021), undefined, { real: 'coyote' }); }
   }
   // magazine release behind the trigger guard (left side): part of the magazine for clicks, but fixed to the frame
   const rel = new THREE.Group(); rel.userData.part = 'magazine'; gun.add(rel);
-  add(rel, rbox(0.002, 0.0086, 0.0082, FW + 0.0008, 0.0626, 0.0575), undefined, { real: 'blackSteel' });
+  add(rel, rbox(0.002, 0.0086, 0.0082, FW + 0.0008, 0.0626, 0.0575), undefined, { real: 'coyote' });
 
   // ═════ slide, barrel, sights ═════
   const slideG = new THREE.Group(); gun.add(slideG);
   const pSlide = part('slide', slideG);
   /** slide section: flat bottom on the frame rails, straight sides, top corners rounded in four steps */
-  const ring = (z: number, top = ST, w = SW) => {
+  const ring = (z: number, top = ST, w = SW, r = SR) => {
     const pts = [V(-w, SB, z), V(w, SB, z)];
-    for (let i = 0; i <= 4; i++) { const a = i / 8 * Math.PI; pts.push(V(w - SR + SR * Math.cos(a), top - SR + SR * Math.sin(a), z)); }
-    for (let i = 0; i <= 4; i++) { const a = (4 + i) / 8 * Math.PI; pts.push(V(-w + SR + SR * Math.cos(a), top - SR + SR * Math.sin(a), z)); }
+    for (let i = 0; i <= 4; i++) { const a = i / 8 * Math.PI; pts.push(V(w - r + r * Math.cos(a), top - r + r * Math.sin(a), z)); }
+    for (let i = 0; i <= 4; i++) { const a = (4 + i) / 8 * Math.PI; pts.push(V(-w + r + r * Math.cos(a), top - r + r * Math.sin(a), z)); }
     return pts;
   };
-  const slideGeo = loft([ring(0.0086, ST - 0.0012, SW - 0.0005), ring(0.0112), ring(0.1905), ring(0.194, ST - 0.0018, SW - 0.0004), ring(0.196, ST - 0.0048, SW - 0.0014)], { capStart: true, capEnd: true }).build();
+  // the nose is sculpted: ahead of the front serrations the top corners open into a broad bevel down to the muzzle
+  const slideGeo = loft([ring(0.0086, ST - 0.0012, SW - 0.0005), ring(0.0112), ring(0.1835), ring(0.1875, ST - 0.0003, SW - 0.0002, 0.0058), ring(0.1905, ST - 0.0008, SW - 0.0006, 0.0075),
+    ring(0.194, ST - 0.0018, SW - 0.0009, 0.0072), ring(0.196, ST - 0.0048, SW - 0.0016, 0.005)], { capStart: true, capEnd: true }).build();
   add(pSlide, slideGeo, undefined, { real: 'slide' });
   { // ejection port (right side): a dark opening wrapping from the top over the rounded corner and down the side
     const o = 0.00008, path = [V(0.003, ST + o, 0), V(-SW + SR, ST + o, 0)];
@@ -196,6 +217,10 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
   const pBarrel = part('barrel', slideG);
   { const b = new THREE.CylinderGeometry(0.0068, 0.0068, 0.1195, 16); b.rotateX(Math.PI / 2); b.translate(0, BY, 0.13875); add(pBarrel, b, undefined, { real: 'barrel' });
     const bore = new THREE.Mesh(new THREE.CircleGeometry(0.0044, 20), E.mats.recess); bore.position.set(0, BY, 0.1986); pBarrel.add(bore); }
+  // recoil spring and guide rod under the slide nose, in front of the dust cover (it rides with the slide and hides
+  // inside the dust cover as the slide recoils)
+  { const g = new THREE.CylinderGeometry(0.0061, 0.0061, 0.0225, 16); g.rotateX(Math.PI / 2); g.translate(0, 0.0968, 0.1843); add(pSlide, g, undefined, { real: 'barrel' });
+    const cup = new THREE.Mesh(new THREE.CircleGeometry(0.0026, 16), E.mats.recess); cup.position.set(0, 0.0968, 0.1957); pSlide.add(cup); }
   const pSights = part('sights', slideG);
   add(pSights, merge([rbox(0.017, 0.0028, 0.0115, 0, 0.1284, 0.01955), ...SIDES.map(k => rbox(0.0067, 0.0065, 0.0115, k * 0.00515, 0.13025, 0.01955))]), undefined, { real: 'blackSteel' });
   add(pSights, rbox(0.0032, 0.0055, 0.005, 0, 0.1293, 0.1885), undefined, { real: 'blackSteel' });
@@ -218,7 +243,7 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
 
   // ═════ Real view only: grip stippling, serration ridges, optic cover plate, accessory-rail groove ═════
   // (the hairline view draws these as lines)
-  const realOnly: THREE.Object3D[] = [];
+  const realOnly: THREE.Object3D[] = [], decalMats: THREE.Material[] = [];
   const realAdd = (parent: THREE.Object3D, geo: THREE.BufferGeometry, tag: string) => {
     const m = add(parent, geo, undefined, { real: tag, lines: false }); m.visible = false; realOnly.push(m); return m;
   };
@@ -233,6 +258,49 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
     const screws = [0.034, 0.064].map(z => new THREE.CylinderGeometry(0.0013, 0.0013, 0.0012, 10).translate(0, ST + 0.0011, z));
     realAdd(pSlide, merge([box(-0.0075, 0.0075, ST, ST + 0.0009, 0.028, 0.070), ...screws]), 'blackSteel'); }
 
+  // ═════ Real view only: what the photographs show up close ═════
+  {
+    // the chamber hood in the ejection port: black, flush with the slide, its calibre engraved on the side
+    const o = 0.00016, path = [V(0.0028, ST + o, 0), V(-SW + SR, ST + o, 0)];
+    for (let i = 1; i <= 4; i++) { const a = Math.PI / 2 + i / 8 * Math.PI; path.push(V(-SW + SR + (SR + o) * Math.cos(a), ST - SR + (SR + o) * Math.sin(a), 0)); }
+    path.push(V(-SW - o, 0.1097, 0));
+    const hood = new THREE.BufferGeometry(), pos: number[] = [], z0 = 0.0818, z1 = 0.1122;
+    for (let i = 0; i < path.length - 1; i++) { const a = path[i], b = path[i + 1]; pos.push(a.x, a.y, z0, b.x, b.y, z0, b.x, b.y, z1, a.x, a.y, z0, b.x, b.y, z1, a.x, a.y, z1); }
+    hood.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); hood.computeVertexNormals();
+    realAdd(pSlide, hood, 'hood');
+    // the extractor behind the port, on the right side of the slide
+    realAdd(pSlide, rbox(0.0007, 0.0034, 0.0118, -SW - 0.00015, 0.1172, 0.0752), 'steel');
+    // the rear plate over the striker
+    realAdd(pSlide, rbox(0.0168, 0.0122, 0.0009, 0, 0.1132, 0.0084), 'blackSteel');
+    // barrel crown: the polished ring round the bore
+    realAdd(pBarrel, new THREE.RingGeometry(0.0044, 0.0063, 24).translate(0, BY, 0.19856), 'steel');
+    // chequering across the front of the trigger guard
+    realAdd(pFrame, merge(Array.from({ length: 6 }, (_, i) => new THREE.BoxGeometry(2 * FW - 0.002, 0.0007, 0.0006).translate(0, 0.0626 + i * 0.0016, 0.1156))), 'polymer');
+    // the takedown lever's axle on the right side, and the stainless serial plate set into the frame
+    realAdd(pFrame, new THREE.CylinderGeometry(0.0034, 0.0034, 0.0008, 24).rotateZ(Math.PI / 2).translate(-FW - 0.0003, 0.0936, 0.098), 'coyote');
+    realAdd(pFrame, rbox(0.0007, 0.0042, 0.0165, -FW - 0.0002, 0.0951, 0.0545), 'steel');
+    // engravings and moulded lettering (no maker's logo)
+    const decal = (parent: THREE.Object3D, w: number, h: number, at: THREE.Vector3, side: number, draw: (x: CanvasRenderingContext2D) => void, px = 1024, o: THREE.MeshStandardMaterialParameters = {}) => {
+      const tex = decalTexture(px, Math.round(px * h / w), draw), mat = decalMaterial(tex, { roughness: 0.6, metalness: 0.2, ...o });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).rotateY(side * Math.PI / 2).translate(at.x, at.y, at.z), mat);
+      m.visible = false; m.raycast = () => {}; parent.add(m); realOnly.push(m); decalMats.push(mat);
+    };
+    const font = (x: CanvasRenderingContext2D, size: number, col: string, weight = 600, style = '') => { x.font = `${style} ${weight} ${size}px ui-monospace, Consolas, monospace`; x.fillStyle = col; x.textBaseline = 'middle'; };
+    decal(pSlide, 0.026, 0.0062, V(-SW - 0.0003, 0.1158, 0.0975), -1, x => { font(x, 150, '#b9bcbe'); x.fillText('9mm x 19', 30, 128); });
+    decal(pFrame, 0.025, 0.0028, V(-FW - 0.0003, 0.0946, 0.0775), -1, x => { font(x, 86, '#5f4c34', 700, 'italic'); x.fillText('NEWINGTON, NH, USA', 8, 58); }, 1024, { alphaTest: 0.4 });
+    decal(pFrame, 0.0158, 0.0036, V(-FW - 0.00062, 0.0951, 0.0545), -1, x => {
+      font(x, 96, '#2a2c2e'); x.fillText('M17 0A1417', 22, 118);
+      let seed = 17; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+      for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) if (i === 0 || j === 11 || rnd() > 0.5) x.fillRect(760 + i * 17, 26 + j * 17, 15, 15);   // a data-matrix code
+    });
+    decal(pFrame, 0.022, 0.0026, V(FW + 0.0003, 0.0946, 0.0775), 1, x => { font(x, 90, '#5f4c34', 700); x.fillText('M17  9mm x 19', 8, 60); }, 1024, { alphaTest: 0.4 });
+    // grooves across the slide stop's thumb pad and the safety paddle
+    for (const k of SIDES) {
+      realAdd(stopG, merge([0, 1, 2, 3].map(i => new THREE.BoxGeometry(0.0004, 0.0006, 0.0007).translate(k * (FW + 0.0019), 0.1037 - i * 0.0011, 0.0412))), 'coyote');
+      realAdd(safeH[k > 0 ? 0 : 1].inner, merge([0, 1, 2].map(i => new THREE.BoxGeometry(0.0004, 0.0006, 0.0024).rotateX(-0.75).translate(k * (0.0126 + 0.0024), 0.1032 - i * 0.0012, 0.0216 + i * 0.001))), 'coyote');
+    }
+  }
+
   // ═════ muzzle flash: accent glow, a flat accent star in the light theme, and a flash of real light ═════
   // (Real view: an additive fireball instead of the glow, and the light turns warm)
   const flashMat = E.glowMat();
@@ -242,6 +310,9 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
   const flashLight = new THREE.PointLight(E.accent.getHex(), 0, 0.9, 2); flashLight.position.set(0, BY + 0.009, 0.23); gun.add(flashLight); E.accentLights.push(flashLight);
   const fireball = makePlume(gun, V(0, BY, 0.199), V(0, 0, 1), 0.03, 0.03, 0.09, 3);
   let realOn = false, relAt = -1;
+  // in the hands on the range: no trigger take-up delay, the flash lights the hall, cases and magazines fall to the floor
+  let inHand = false, trigDelay = 50, flashGain = 1.2, brassMax = 12;
+  let ground = (_x: number, _z: number) => 0;
 
   // ═════ cases and live rounds thrown from the ejection port ═════
   // Each one carries a hairline version and a real one (lathe-turned case with its extractor groove, copper bullet).
@@ -254,7 +325,7 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
   const noseReal = lathe([[0.0045, 0.009], [0.00452, 0.0125], [0.0041, 0.0152], [0.0032, 0.0174], [0.0018, 0.0189], [0, 0.0195]]);
   const drop = (b: Brass) => { b.g.removeFromParent(); b.g.traverse(o => (o as THREE.Mesh).geometry?.dispose()); };
   function eject(live: boolean) {
-    if (brass.length >= 12) drop(brass.shift()!);
+    if (brass.length >= brassMax) drop(brass.shift()!);
     const g = new THREE.Group(), line = new THREE.Group(), real = new THREE.Group(); g.add(line, real); E.scene.add(g);
     add(line, caseGeo.clone()); if (live) add(line, noseGeo.clone());
     const pieces: [THREE.BufferGeometry, THREE.Material][] = [[caseReal, RM.brass]]; if (live) pieces.push([noseReal, RM.copper]);
@@ -264,7 +335,65 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
     g.position.copy(gun.localToWorld(V(-0.009, 0.1205, 0.097 + slideZ)));
     g.rotation.set(0, 0, Math.PI / 2);
     const r = () => Math.random() - 0.5;
-    brass.push({ g, line, real, v: V(-0.42 + r() * 0.16, 0.9 + r() * 0.25, -0.2 + r() * 0.15), spin: V(r() * 30, r() * 20, 18 + r() * 10), rest: false, bounced: false });
+    const v = V(-0.42 + r() * 0.16, 0.9 + r() * 0.25, -0.2 + r() * 0.15).applyQuaternion(gun.quaternion);   // thrown to the pistol's right
+    g.quaternion.premultiply(gun.quaternion);
+    brass.push({ g, line, real, v, spin: V(r() * 30, r() * 20, 18 + r() * 10), rest: false, bounced: false });
+  }
+
+  // ═════ magazines dropped in the hands: a copy of the magazine falls to the floor (the last three stay) ═════
+  type Mag = { g: THREE.Group; v: THREE.Vector3; spin: number; rest: boolean };
+  const mags: Mag[] = [], MAG_C = V(0, 0.045, 0.025);
+  function dropMag() {
+    if (mags.length >= 3) mags.shift()!.g.removeFromParent();
+    gun.updateMatrixWorld(true);
+    const g = new THREE.Group(), copy = pMag.clone(true);
+    copy.traverse(o => { if ((o as THREE.Points).isPoints || (o as { isLineSegments2?: boolean }).isLineSegments2 || o.userData.outline) o.visible = false; });
+    copy.position.set(0, 0, 0).sub(MAG_C); copy.visible = true; g.add(copy);
+    g.position.copy(gun.localToWorld(MAG_C.clone())); g.quaternion.copy(gun.quaternion); E.scene.add(g);
+    mags.push({ g, v: MAG_DIR.clone().applyQuaternion(gun.quaternion).multiplyScalar(1.2), spin: (Math.random() - 0.5) * 6, rest: false });
+  }
+
+  // ═════ the range: what the shooting lane needs from this pistol ═════
+  const rangeGun: RangeGun = {
+    name: 'M17', calibre: '9×19 mm', root: gun,
+    // tops of the rear sight's two blades and of the front post, along the line of the tritium dots
+    sight: { rear: V(0, 0.1335, 0.0139), front: V(0, 0.13205, 0.1885) },
+    muzzle: V(0, BY, 0.2), relief: 0.52,
+    grip: { web: V(0, 0.0655, 0.0072), down: MAG_DIR.clone(), length: 0.062, depth: 0.05, half: GW, trigger: V(0, 0.0718, 0.0802), thumbY: 0.091, frameHalf: FW },
+    recoil: { rise: 7 * DEG, push: 0.018 },
+    trigger() {
+      if (busy() || st.stripped) return 'busy';
+      const r = st.safe ? 'safe' : st.locked ? 'locked' : !st.chamber ? 'click' : 'shot';
+      if (r !== 'locked') act.fire();
+      return r;
+    },
+    magazine() { act.magazine(); },
+    rack() { act.rack(); },
+    safety() { act.safety(); },
+    night() { act.night(); },
+    state: () => ({ rounds: st.rounds, cap: CAP, chamber: st.chamber, magIn: st.magIn, safe: st.safe, locked: st.locked, busy: busy() || (st.magT > 0 && st.magT < 1), night: st.night }),
+    hold(on, o) {
+      inHand = on; trigDelay = on ? 0 : 50; flashGain = on ? 30 : 1.2; flashLight.distance = on ? (o?.flash ?? 12) : 0.9; brassMax = on ? 40 : 12;
+      ground = on && o ? o.ground : () => 0;
+      if (!on) {                                              // back on the bench, the floor swept
+        gun.position.set(0, GY, 0); gun.quaternion.identity();
+        brass.forEach(drop); brass.length = 0; mags.forEach(m => m.g.removeFromParent()); mags.length = 0;
+        if (!st.magIn) { st.magIn = true; st.rounds = CAP; st.magT = 0; }
+        st.safe = true; st.safeT = 1;                         // made safe as it leaves the line
+      }
+    },
+  };
+  let rng: Range | null = null, wantRange = false, loadingRange = false;
+  function openRange() {
+    if (rng) { wantRange = false; rng.enter(); return; }
+    if (loadingRange) return;
+    loadingRange = true;
+    import('../../../range/range').then(({ createRange }) => {
+      loadingRange = false;
+      rng ??= createRange(E, snd, rangeGun, MAT);
+      if (wantRange && realOn) rng.enter();
+      wantRange = false;
+    }).catch(err => { loadingRange = false; wantRange = false; console.error(err); say('the range failed to load'); });
   }
 
   // ═════ state ═════
@@ -298,7 +427,7 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
       if (st.safe) { snd.click(0, 0.6); return say('safety on'); }
       if (st.locked) return say('slide locked back');
       if (!st.chamber) { snd.click(0, 0.7); return say('click · chamber empty'); }
-      st.cycle = { kind: 'shot', t0: performance.now() + 50, back: false, done: false, lock: false };
+      st.cycle = { kind: 'shot', t0: performance.now() + trigDelay, back: false, done: false, lock: false };
     },
     rack() {
       if (st.stripped || st.stripT > 0) return say('reassemble first');
@@ -310,7 +439,7 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
       if (st.stripped) return say('reassemble first');
       if (st.magT > 0 && st.magT < 1) return;
       st.magIn = !st.magIn;
-      if (!st.magIn) relAt = performance.now();
+      if (!st.magIn) { relAt = performance.now(); if (inHand) dropMag(); }
       if (st.magIn) { st.rounds = CAP; snd.click(0.28, 0.8); snd.thunk(0.3); }
       else { snd.click(0, 1.2); snd.tone(260, 0.09, 0.1, { type: 'triangle', at: 0.3 }); }
     },
@@ -324,6 +453,13 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
         st.locked = false;
       }
       st.stripped = !st.stripped; snd.click(0, 0.8); snd.click(0.5, 1);
+    },
+    range() {
+      if (rng?.on) { wantRange = false; rng.exit(); return; }
+      if (st.stripped || st.stripT > 0) return say('reassemble first');
+      wantRange = true;
+      if (!realOn) { say('opening the range'); style(true); return; }   // goes on once the real view is up (tick)
+      openRange();
     },
     demo() {
       if (script.active) { script.stop(); return; }
@@ -349,6 +485,8 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
   // ═════ per frame ═════
   const flashK = (now: number) => st.shotAt < 0 ? 0 : Math.exp(-Math.max(0, now - st.shotAt) / 28) * (now >= st.shotAt ? 1 : 0);
   function tick(now: number, dt: number) {
+    if (wantRange && realOn && !rng?.on) openRange();
+    rng?.tick(now, dt);
     st.magT = approach(st.magT, st.magIn ? 0 : 1, (st.magIn ? 2.6 : 4) * dt);
     st.stripT = approach(st.stripT, st.stripped ? 1 : 0, 0.9 * dt);
     st.safeT = approach(st.safeT, st.safe ? 1 : 0, 9 * dt);
@@ -388,6 +526,13 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
 
     // magazine: falls down the grip axis onto the mat; loads back in and slows as it seats
     pMag.position.copy(MAG_DIR).multiplyScalar(MAG_DROP * st.magT * st.magT);
+    pMag.visible = !inHand || st.magIn;
+    for (const m of mags) {
+      if (m.rest) continue;
+      m.v.y -= 9.8 * dt; m.g.position.addScaledVector(m.v, dt); m.g.rotation.x += m.spin * dt;
+      const gy = ground(m.g.position.x, m.g.position.z) + 0.0125;
+      if (m.g.position.y <= gy) { m.g.position.y = gy; m.rest = true; m.g.rotation.set(0, m.g.rotation.y, Math.PI / 2); snd.tone(900, 0.06, 0.05); snd.tone(2400, 0.05, 0.03); }
+    }
     rel.position.x = relAt < 0 ? 0 : -0.0012 * Math.max(0, 1 - (now - relAt) / 180);   // release pressed in
     topRound.visible = st.rounds > 0;
 
@@ -397,7 +542,7 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
     const fk = flashK(now);
     flashMesh.visible = !realOn && fk > 0.04; flashMat.emissiveIntensity = 2.4 * fk; flashMesh.scale.setScalar(0.7 + fk * 0.6);
     flashGlow.material.uniforms.intensity.value = fk * 1.4;
-    flashLight.intensity = fk * 1.2;
+    flashLight.intensity = fk * flashGain;
 
     bench.shadowMat.uniforms.opacity.value = E.shadowStrength() * 0.8;
 
@@ -407,8 +552,9 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
       b.v.y -= 9.8 * dt;
       b.g.position.addScaledVector(b.v, dt);
       b.g.rotation.x += b.spin.x * dt; b.g.rotation.y += b.spin.y * dt; b.g.rotation.z += b.spin.z * dt;
-      if (b.g.position.y <= CASE_R) {
-        b.g.position.y = CASE_R;
+      const gy = ground(b.g.position.x, b.g.position.z) + CASE_R;
+      if (b.g.position.y <= gy) {
+        b.g.position.y = gy;
         if (!b.bounced && b.v.y < -0.4) { b.bounced = true; b.v.set(b.v.x * 0.35, -b.v.y * 0.25, b.v.z * 0.35); b.spin.multiplyScalar(0.3); snd.tone(3300, 0.07, 0.03); snd.tone(4300, 0.05, 0.02); }
         else { b.rest = true; b.g.rotation.set(0, b.g.rotation.y, Math.PI / 2); snd.tone(3000, 0.05, 0.015); }
       }
@@ -416,6 +562,7 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
   }
 
   function readout() {
+    if (rng?.on) return 'range · lane 3';
     const p: string[] = [];
     p.push(st.magIn ? `${st.rounds} in magazine` : 'magazine out');
     p.push(st.chamber ? 'round chambered' : 'chamber empty');
@@ -430,8 +577,10 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
     materials: { ...RM, body: RM.blackSteel },
     lamps: [[tritMat, 'green']],
     only: { line: [], real: realOnly },
+    stage: () => rng?.stage() ?? null,
     onStyle(on) {
       realOn = on;
+      if (!on) { wantRange = false; rng?.exit(); }
       for (const b of brass) { b.line.visible = !on; b.real.visible = on; }
       if (!on) { fireball.set(0, 0); flashLight.color.copy(E.accent); }
     },
@@ -442,11 +591,17 @@ const model: ModelFactory = ({ E, snd, script, say }) => {
     pickRoot: gun, parts: K.parts, real,
     view: { target: V(0.06, 0.15, 0.08), dist: 0.74, min: 0.2, max: 3 },
     actions: act, passive: ['night'],
-    on: () => ({ demo: script.active, fire: !!st.cycle && st.cycle.kind === 'shot', rack: st.locked, magazine: st.magIn, safety: st.safe, night: st.night, strip: st.stripped }),
+    keyDown: (k, e) => rng?.keyDown(k, e) ?? false,
+    keyUp: k => rng?.keyUp(k),
+    blur: () => rng?.blur(),
+    hud: () => rng?.hud() ?? null,
+    on: () => ({ range: !!rng?.on, demo: script.active, fire: !!st.cycle && st.cycle.kind === 'shot', rack: st.locked, magazine: st.magIn, safety: st.safe, night: st.night, strip: st.stripped }),
     tick, readout,
     dispose() {
+      rng?.dispose(); mags.forEach(m => m.g.removeFromParent());
       brass.forEach(drop);
-      RM.stipple.bumpMap?.dispose(); Object.values(RM).forEach(m => m.dispose());
+      RM.stipple.bumpMap?.dispose(); RM.polymer.bumpMap?.dispose(); Object.values(RM).forEach(m => m.dispose());
+      decalMats.forEach(m => { (m as THREE.MeshStandardMaterial).map?.dispose(); m.dispose(); });
       [caseReal, noseReal].forEach(g => g.dispose());
     },
   };

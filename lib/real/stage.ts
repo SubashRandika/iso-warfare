@@ -6,22 +6,25 @@
 // Aircraft stand on the apron; small arms get a shooting bench (lib/real/bench.ts). Sun distance, shadow depth and
 // bias and the fog all scale with the model's size, so a pistol and a fighter both get crisp shadows and a horizon.
 //
-// Light theme = midday, dark theme = dusk.
+// Light theme = midday, dark theme = dusk. A model can light an indoor set instead (RealSpec.stage: the shooting range).
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Engine } from '../iso/engine';
-import type { LampColor, RealSpec } from './types';
+import type { LampColor, RealSpec, StageOverride } from './types';
 import { concreteTextures, skinTexture } from './textures';
 import { LAMP_RGB, realMaterials, type RealMaterials, type RealTag } from './materials';
 import { buildBench } from './bench';
 
 const CREASE = 38 * Math.PI / 180;
 
+// bloomT: the glow's threshold, just above the brightest sky (the midday horizon is about 3.5 before exposure), so only
+// flames, flashes and lamps glow; a sky above it would haze everything in front of it
 const TIMES = {
-  day: { el: 40, az: 68, turbidity: 3.5, rayleigh: 1.1, mie: 0.004, g: 0.8, clouds: 0.32, sun: 3.0, sunCol: 0xfff3e2, exposure: 0.5, fog: 0xc4d0dc, fogD: 0.0028, bloom: 0.18, env: 0.32 },
-  dusk: { el: 9, az: 62, turbidity: 7, rayleigh: 2.6, mie: 0.006, g: 0.9, clouds: 0.45, sun: 2.4, sunCol: 0xffad6b, exposure: 0.7, fog: 0x8f8582, fogD: 0.0032, bloom: 0.5, env: 0.55 },
+  day: { el: 40, az: 68, turbidity: 3.5, rayleigh: 1.1, mie: 0.004, g: 0.8, clouds: 0.32, sun: 3.0, sunCol: 0xfff3e2, exposure: 0.5, fog: 0xc4d0dc, fogD: 0.0028, bloom: 0.18, bloomT: 4.6, env: 0.32 },
+  dusk: { el: 9, az: 62, turbidity: 7, rayleigh: 2.6, mie: 0.006, g: 0.9, clouds: 0.45, sun: 2.4, sunCol: 0xffad6b, exposure: 0.7, fog: 0x8f8582, fogD: 0.0032, bloom: 0.5, bloomT: 3.2, env: 0.55 },
 };
 
 type Swap = { mesh: THREE.Mesh; orig: THREE.Material | THREE.Material[]; real: THREE.Material; flatN?: THREE.BufferAttribute; smoothN?: THREE.BufferAttribute };
@@ -72,22 +75,51 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
   const sun = E.lights.sun, sun0 = { pos: sun.position.clone(), col: sun.color.clone() };
   sun.shadow.mapSize.set(4096, 4096);
   const sc = sun.shadow.camera as THREE.OrthographicCamera;
-  sc.left = sc.bottom = -S * 1.4; sc.right = sc.top = S * 1.4; sc.near = S * 0.05; sc.far = S * 32; sc.updateProjectionMatrix();
-  sun.shadow.bias = -0.0002; sun.shadow.normalBias = S * 0.0018; sun.shadow.radius = 3;
+  /** the shadow box: half-size h around the aim point, the sun `dist` away */
+  const shadowBox = (h: number, dist: number, nb: number) => {
+    sc.left = sc.bottom = -h; sc.right = sc.top = h; sc.near = Math.max(0.01, dist - h * 3); sc.far = dist + h * 3; sc.updateProjectionMatrix();
+    sun.shadow.normalBias = nb;
+  };
+  sun.shadow.bias = -0.0002; sun.shadow.radius = 3;
+  let indoor: StageOverride | null = null, sunDist = SUN;
   E.scene.add(sun.target);
   const pmrem = new THREE.PMREMGenerator(E.renderer);
   const envScene = new THREE.Scene(), envSky = new Sky(); envSky.scale.setScalar(50); envScene.add(envSky);
-  let envRT: THREE.WebGLRenderTarget | null = null, envKey = '';
+  let envRT: THREE.WebGLRenderTarget | null = null, envKey = '', roomRT: THREE.WebGLRenderTarget | null = null;
   const bloom = new UnrealBloomPass(new THREE.Vector2(E.renderer.domElement.width, E.renderer.domElement.height), 0.3, 0.45, 3.0);
   bloom.enabled = false; E.addPreOutputPass(bloom);
+  // a soft ramp over the threshold, and a cap on what feeds the glow: a sun disc in frame is thousands of times brighter
+  // than anything else and would otherwise wash the whole frame white
+  (bloom.highPassUniforms as Record<string, THREE.IUniform>).smoothWidth.value = 1.2;
+  const hp = bloom.materialHighPassFilter;
+  hp.fragmentShader = hp.fragmentShader.replace('gl_FragColor = mix( outputColor, texel, alpha );', 'gl_FragColor = min( mix( outputColor, texel, alpha ), vec4( 16.0 ) );');
+  hp.needsUpdate = true;
 
   const sunDir = new THREE.Vector3(0, 1, 0), aimAt = new THREE.Vector3();
   /** the sun and its shadow box sit over the focus, or over the followed object as it moves */
   function aimSun() {
-    if (spec.follow) { spec.follow.getWorldPosition(aimAt); aimAt.y = focus.y; } else aimAt.copy(focus);
-    sun.position.copy(aimAt).addScaledVector(sunDir, SUN); sun.target.position.copy(aimAt); sun.target.updateMatrixWorld();
+    if (indoor) aimAt.copy(indoor.sun.focus);
+    else if (spec.follow) { spec.follow.getWorldPosition(aimAt); aimAt.y = focus.y; } else aimAt.copy(focus);
+    sun.position.copy(aimAt).addScaledVector(sunDir, sunDist); sun.target.position.copy(aimAt); sun.target.updateMatrixWorld();
+  }
+  /** an indoor set: a lit room's reflections, no sky, the sun overhead as the house lights */
+  function applyIndoor(o: StageOverride) {
+    if (!roomRT) { const room = new RoomEnvironment(); roomRT = pmrem.fromScene(room, 0.04); room.dispose(); }
+    const s = E.scene;
+    sky.visible = o.sky;
+    s.environment = o.env === 'room' ? roomRT.texture : envRT?.texture ?? null; s.environmentIntensity = o.envI;
+    s.fog = o.fog ? new THREE.FogExp2(o.fog.color, o.fog.density) : null;
+    E.renderer.toneMapping = THREE.ACESFilmicToneMapping; E.renderer.toneMappingExposure = o.exposure;
+    E.lights.hemi.intensity = 0; E.lights.ambient.intensity = 0; E.lights.fill.intensity = 0;
+    sun.color.set(o.sun.color); sun.intensity = o.sun.intensity; sun.castShadow = true;
+    sunDir.copy(o.sun.dir).normalize(); sunDist = o.sun.size * 2.5;
+    shadowBox(o.sun.size, sunDist, o.sun.size * 0.0012); aimSun();
+    bloom.strength = o.bloom; bloom.threshold = o.bloomT;
   }
   function applyTime() {
+    indoor = spec.stage?.() ?? null;
+    if (indoor) { if (!envRT) { envSky.material.uniforms.cloudCoverage.value = 0; envRT = pmrem.fromScene(envScene, 0.02); envKey = E.theme; } applyIndoor(indoor); return; }
+    sky.visible = true; sunDist = SUN; shadowBox(S * 1.4, SUN, S * 0.0018);
     const T = E.theme === 'light' ? TIMES.day : TIMES.dusk, key = E.theme;
     const el = THREE.MathUtils.degToRad(T.el), az = THREE.MathUtils.degToRad(T.az);
     const dir = new THREE.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
@@ -108,7 +140,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
     E.lights.hemi.intensity = 0; E.lights.ambient.intensity = 0; E.lights.fill.intensity = 0;
     sun.color.set(T.sunCol); sun.intensity = T.sun; sun.castShadow = true;
     sunDir.copy(dir); aimSun();
-    bloom.strength = T.bloom;
+    bloom.strength = T.bloom; bloom.threshold = T.bloomT;
   }
 
   // ── material swaps ──
@@ -193,6 +225,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
 
   E.onTick(now => {
     if (!on) return;
+    if ((spec.stage?.() ?? null) !== indoor) applyTime();
     sky.material.uniforms.time.value = now / 1000;
     for (const o of hairs) {                        // only a selected part keeps its accent outline
       const mat = (o as THREE.Mesh).material as THREE.Material;
@@ -213,7 +246,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
       bench?.dispose();
       Object.values(M).forEach(m => m.dispose());
       lampMats.forEach(([, r]) => r.dispose());
-      envRT?.dispose(); pmrem.dispose(); bloom.dispose();
+      envRT?.dispose(); roomRT?.dispose(); pmrem.dispose(); bloom.dispose();
       envSky.geometry.dispose(); envSky.material.dispose();
     },
   };

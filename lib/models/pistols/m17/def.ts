@@ -25,11 +25,12 @@ export const m17: ModelDef = {
     { id: 'safety', label: 'Safety', key: 'S' },
     { id: 'night', label: 'Night sights', key: 'N' },
     { id: 'strip', label: 'Field strip', key: 'P' },
+    { id: 'range', label: 'Shooting range', key: 'G' },
   ],
   partActions: {
     slide: 'rack', slideStop: 'rack', trigger: 'fire', safety: 'safety', magazine: 'magazine', sights: 'night',
     takedown: 'strip', barrel: 'strip', chassis: 'strip',
   },
-  hint: 'F fire · R rack · E magazine · S safety · P field strip · I iso · T theme',
+  hint: 'G range (real) · F fire · R rack · E magazine · S safety · P field strip · I iso · T theme',
   load: () => import('./model'),
 };

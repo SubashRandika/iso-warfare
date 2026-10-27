@@ -41,6 +41,22 @@ export interface EyeSpec {
   frame?(cam: THREE.PerspectiveCamera, dt: number): void;
   /** the engine left the view by itself (the iso view was asked for) */
   exit?(): void;
+  /** game controls (a shooting range): the model turns the head itself, so the engine adds no look of its own */
+  lock?: EyeLock;
+}
+/**
+ * Mouse-look controls for a first-person view. The first click captures the pointer (pointer lock); then raw mouse
+ * movement, buttons and the wheel go to the model, and clicks never pick parts. If the browser refuses the lock, a
+ * drag looks instead and clicks still count as buttons.
+ */
+export interface EyeLock {
+  /** mouse movement in CSS pixels */
+  look(dx: number, dy: number): void;
+  /** 0 left, 2 right */
+  button(b: number, down: boolean): void;
+  wheel?(dy: number): void;
+  /** the pointer was captured or released (Escape releases it); `refused`: the browser won't capture it (drag looks) */
+  locked?(on: boolean, refused?: boolean): void;
 }
 type Pick = (part: string | null, hit: THREE.Intersection | null) => void;
 
@@ -397,8 +413,10 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   // ── first-person view: drag looks round from where the model puts the head (easing back after a pause), wheel zooms ──
   const look = { yaw: 0, pitch: 0, idle: 0, fov: 60, drag: null as null | { x: number; y: number } };
   const eyeQ = new THREE.Quaternion(), lookQ = new THREE.Quaternion(), lookE = new THREE.Euler(0, 0, 0, 'YXZ');
+  let locked = false, lockRefused = false;
   function setEye(s: EyeSpec | null) {
     if (s === eye) return;
+    if (locked && !s?.lock) document.exitPointerLock();
     eye = s; look.yaw = look.pitch = 0; look.drag = null; look.idle = 0;
     if (s) { look.fov = eyeCam.fov = s.fov; eyeCam.near = s.near; eyeCam.far = s.far; eyeCam.aspect = vw / vh; eyeCam.updateProjectionMatrix(); }
     controls.enabled = !s;
@@ -408,14 +426,23 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   function placeEye(dt: number) {
     const s = eye!;
     s.pose(eyeCam.position, eyeQ);
-    if (!look.drag && (look.idle += dt) > 2.5) { const k = Math.min(1, dt * 1.6); look.yaw -= look.yaw * k; look.pitch -= look.pitch * k; }
-    lookQ.setFromEuler(lookE.set(look.pitch, look.yaw, 0));
-    eyeCam.quaternion.copy(eyeQ).multiply(lookQ);
-    if (eyeCam.fov !== look.fov) { eyeCam.fov = look.fov; eyeCam.updateProjectionMatrix(); }
+    if (s.lock) eyeCam.quaternion.copy(eyeQ);
+    else {
+      if (!look.drag && (look.idle += dt) > 2.5) { const k = Math.min(1, dt * 1.6); look.yaw -= look.yaw * k; look.pitch -= look.pitch * k; }
+      lookQ.setFromEuler(lookE.set(look.pitch, look.yaw, 0));
+      eyeCam.quaternion.copy(eyeQ).multiply(lookQ);
+    }
+    if (!s.lock && eyeCam.fov !== look.fov) { eyeCam.fov = look.fov; eyeCam.updateProjectionMatrix(); }   // (with game controls the model zooms)
     eyeCam.updateMatrixWorld();
     s.frame?.(eyeCam, dt);
   }
   const onEyeMove = (e: PointerEvent) => {
+    if (eye?.lock) {
+      const c = (v: number) => THREE.MathUtils.clamp(v, -240, 240);        // some browsers spike on the first move
+      if (locked) eye.lock.look(c(e.movementX), c(e.movementY));
+      else if (look.drag) { eye.lock.look(e.clientX - look.drag.x, e.clientY - look.drag.y); look.drag = { x: e.clientX, y: e.clientY }; }
+      return;
+    }
     if (!eye || !look.drag) return;
     const k = THREE.MathUtils.degToRad(look.fov) / vh;          // one pixel of drag turns the view by one pixel's angle
     look.yaw = THREE.MathUtils.clamp(look.yaw + (e.clientX - look.drag.x) * k, -2.4, 2.4);
@@ -426,8 +453,34 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   const onWheel = (e: WheelEvent) => {
     if (!eye) return;
     e.preventDefault();
+    if (eye.lock) { eye.lock.wheel?.(e.deltaY); return; }
     look.fov = THREE.MathUtils.clamp(look.fov * Math.exp(e.deltaY * 0.0012), 22, 85);
   };
+  // pointer lock: buttons come as mouse events (pointer events skip a second button pressed while one is held)
+  const canvas = renderer.domElement;
+  const onLockChange = () => { locked = document.pointerLockElement === canvas; if (locked) lockRefused = false; eye?.lock?.locked?.(locked); };
+  const onLockError = () => { lockRefused = true; eye?.lock?.locked?.(false, true); };
+  let pressAt: [number, number] | null = null;                // without a lock a drag looks, so the left button fires on release
+  const onMouseDown = (e: MouseEvent) => {
+    if (!eye?.lock) return;
+    e.preventDefault();
+    // other buttons (aiming) act at once, captured or not; the left button fires only once the pointer is captured
+    if (locked || e.button !== 0) eye.lock.button(e.button, true);
+    if (locked) return;
+    if (lockRefused) { if (e.button === 0) pressAt = [e.clientX, e.clientY]; return; }
+    try { const p = canvas.requestPointerLock() as unknown as Promise<void> | undefined; p?.catch?.(onLockError); } catch { onLockError(); }
+  };
+  const onMouseUp = (e: MouseEvent) => {
+    if (!eye?.lock) return;
+    if (pressAt && e.button === 0) { const p = pressAt; pressAt = null; if (Math.hypot(e.clientX - p[0], e.clientY - p[1]) <= 5) eye.lock.button(0, true); }
+    eye.lock.button(e.button, false);
+  };
+  const onMenu = (e: Event) => { if (eye?.lock) e.preventDefault(); };
+  document.addEventListener('pointerlockchange', onLockChange);
+  document.addEventListener('pointerlockerror', onLockError);
+  canvas.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mouseup', onMouseUp);
+  document.addEventListener('contextmenu', onMenu);       // (while captured it may target the document)
 
   function setView(v: ViewSpec) {
     view = v;
@@ -450,9 +503,13 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   const shown = (o: THREE.Object3D | null) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
   const onDown = (e: PointerEvent) => {
     down = [e.clientX, e.clientY];
-    if (eye) { look.drag = { x: e.clientX, y: e.clientY }; look.idle = 0; renderer.domElement.setPointerCapture(e.pointerId); }
+    if (eye) {
+      look.drag = { x: e.clientX, y: e.clientY }; look.idle = 0;
+      if (!locked) try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* a locked or synthetic pointer */ }
+    }
   };
   const onUp = (e: PointerEvent) => {
+    if (eye?.lock) return;                                   // game controls: clicks are buttons, not picks
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5 || !pickRoot) return;
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -521,6 +578,12 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     renderer.domElement.removeEventListener('pointerup', onEyeEnd);
     renderer.domElement.removeEventListener('pointercancel', onEyeEnd);
     renderer.domElement.removeEventListener('wheel', onWheel);
+    document.removeEventListener('pointerlockchange', onLockChange);
+    document.removeEventListener('pointerlockerror', onLockError);
+    canvas.removeEventListener('mousedown', onMouseDown);
+    window.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('contextmenu', onMenu);
+    if (locked) document.exitPointerLock();
     controls.dispose();
     scene.traverse(o => {
       const m = o as THREE.Mesh;
@@ -545,6 +608,8 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     /** the orbit camera, even while the first-person view is on */
     get orbitCamera() { return camera; },
     get eye() { return eye !== null; }, setEye,
+    /** the pointer is captured for game controls */
+    get locked() { return locked; },
     /** add a post pass before tone mapping (bloom and the like) */
     addPreOutputPass(p: Pass) { composer.insertPass(p, 1); },
     mats: { body: bodyMat, recess: recessMat, pad: padMat, glass: glassMat, line: lineMat, major: majorMat },

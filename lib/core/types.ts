@@ -6,6 +6,7 @@ import type { ModelDef } from '../catalog/types';
 import type { Sound } from './sound';
 import type { Script } from './script';
 import type { RealSpec } from '../real/types';
+import type { RangeHud } from '../range/hud';
 
 export type GlowPoints = ReturnType<Engine['glowPoints']>;
 
@@ -21,6 +22,8 @@ export interface ModelCtx {
   wig(id: string, now: number): number;
   /** the catalogue lists this action for the model */
   has(action: string): boolean;
+  /** switch the render style (true: the realistic view, loading it if needed); the model hears back through onStyle */
+  style(real: boolean): void;
 }
 
 export interface ModelView {
@@ -47,6 +50,8 @@ export interface ModelRuntime {
   keyDown?(key: string, e: KeyboardEvent): boolean;
   keyUp?(key: string): void;
   blur?(): void;
+  /** a game overlay to draw over the scene (the shooting range); the usual panels hide while it shows */
+  hud?(): RangeHud | null;
   /** opt in to the realistic render style (Line / Real switch); see lib/real/types.ts */
   real?: RealSpec;
   dispose?(): void;

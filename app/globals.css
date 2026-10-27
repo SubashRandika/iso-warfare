@@ -157,3 +157,67 @@ button { font: inherit; color: inherit; }
 }
 @media (max-width: 520px) { .swatches, .solo { display: none; } }
 @media (prefers-reduced-motion: reduce) { .armory { animation: none; } .crumb-caret, .swatches button i { transition: none; } }
+
+/* ── shooting range overlay (components/RangeHud.tsx): chips at the edges, commands and hit marks at the centre ── */
+.stage.ranging canvas { cursor: crosshair; }
+.range { position: fixed; inset: 0; z-index: 3; pointer-events: none; color: var(--ink); font: 12px/1.4 var(--mono); }
+.range :is(.r-lane, .r-timer, .r-leave, .r-score, .r-string, .r-ammo, .r-card) { position: absolute; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); transition: opacity 0.25s; }
+.range .r-k { color: var(--dim); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+.range kbd { font: inherit; font-size: 10px; line-height: 1; min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); color: var(--ink); }
+.range.aiming :is(.r-string, .r-leave, .r-lane) { opacity: 0.4; }
+/* top row */
+.r-lane { top: 16px; left: 16px; padding: 8px 14px 9px; display: flex; flex-direction: column; gap: 1px; }
+.r-lane b { font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: 26px; line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; }
+.r-lane span { color: var(--dim); font-size: 11px; letter-spacing: 0.04em; }
+.r-timer { top: 16px; left: 50%; transform: translateX(-50%); min-width: 176px; padding: 6px 18px 8px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.r-timer .r-t { font-size: 30px; line-height: 1.05; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.r-timer.live { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.r-timer.live .r-t { color: var(--accent); }
+.r-leave { top: 16px; right: 16px; padding: 7px 12px; display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 11px; }
+/* centre: hip dot, hit mark, breath, the range officer's command */
+.r-dot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--ink); opacity: 0.55; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
+.r-mark { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; color: var(--ink); animation: r-mark 0.4s ease-out forwards;
+  background: linear-gradient(currentColor, currentColor) center top / 2px 9px no-repeat, linear-gradient(currentColor, currentColor) center bottom / 2px 9px no-repeat,
+    linear-gradient(currentColor, currentColor) left center / 9px 2px no-repeat, linear-gradient(currentColor, currentColor) right center / 9px 2px no-repeat; }
+.r-mark.z-A { color: var(--accent); }
+.r-mark.z-S { color: var(--dim); }
+@keyframes r-mark { from { opacity: 1; transform: rotate(45deg) scale(0.7); } to { opacity: 0; transform: rotate(45deg) scale(1.2); } }
+.r-breath { position: absolute; left: 50%; top: calc(50% + 34px); width: 64px; height: 2px; margin-left: -32px; border-radius: 2px; background: linear-gradient(90deg, var(--accent) calc(var(--b) * 100%), var(--line) 0); }
+.r-call { position: absolute; left: 0; right: 0; top: 30%; text-align: center; font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: clamp(30px, 5vw, 56px); line-height: 1; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); animation: r-call 2s ease-out forwards; }
+@keyframes r-call { 0% { opacity: 0; transform: translateY(6px); } 10% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; } }
+/* bottom row and the shot string */
+.r-score { left: 16px; bottom: 16px; padding: 8px 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.r-score b { font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: 42px; line-height: 0.95; font-variant-numeric: tabular-nums; }
+.r-score .r-sub { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.r-string { right: 16px; top: 50%; transform: translateY(-50%); width: 188px; margin: 0; padding: 8px 10px; list-style: none; display: flex; flex-direction: column; gap: 3px; font-variant-numeric: tabular-nums; }
+.r-string li { display: grid; grid-template-columns: 22px 40px 1fr auto; align-items: center; gap: 6px; color: var(--dim); }
+.r-string li:first-child { color: var(--ink); }
+.r-string em { font-style: normal; height: 18px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font-size: 10px; letter-spacing: 0.04em; }
+.r-string .z-A em { color: var(--accent); border-color: var(--accent); }
+.r-string :is(.z-M, .z-S) em { color: var(--dim); }
+.r-string .z-NS em { text-decoration: line-through; }
+.r-ammo { right: 16px; bottom: 16px; padding: 8px 14px 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.r-count { display: flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; }
+.r-count b { font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: 42px; line-height: 0.95; }
+.r-count em { font-style: normal; color: var(--accent); font-size: 13px; }
+.r-count span { color: var(--dim); font-size: 13px; }
+.r-cells { display: flex; gap: 2px; }
+.r-cells i { width: 5px; height: 13px; border-radius: 1px; background: var(--line); }
+.r-cells i.on { background: var(--ink); }
+.r-ammo.warn .r-k { color: var(--accent); }
+/* cards: taking the line, the drill's result */
+.r-card { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px)); padding: 20px 22px 18px; text-align: center; }
+.r-card p { margin: 4px 0 0; color: var(--dim); }
+.r-big { display: block; font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: 54px; line-height: 0.95; letter-spacing: 0.03em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.r-card dl { margin: 16px 0 0; display: grid; gap: 5px 18px; text-align: left; }
+.r-card dl div { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.r-card dt { color: var(--dim); }
+.r-card dd { margin: 0; color: var(--ink); }
+.r-take dl { grid-template-columns: 1fr 1fr; }
+.r-take p { color: var(--ink); font-size: 13px; letter-spacing: 0.04em; }
+.r-result .r-big { color: var(--accent); font-size: 72px; margin-top: 4px; }
+.r-again { margin-top: 14px !important; display: flex; align-items: center; justify-content: center; gap: 8px; }
+:root[data-theme="light"] .r-call { text-shadow: 0 2px 16px rgba(255, 255, 255, 0.6); }
+@media (max-width: 900px) { .r-string { display: none; } .r-take dl { grid-template-columns: 1fr; } .r-leave span { display: none; } }
+@media (prefers-reduced-motion: reduce) { .r-mark { animation-duration: 0.01s; } .r-call { animation-name: r-call-still; } }
+@keyframes r-call-still { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }

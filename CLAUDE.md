@@ -21,6 +21,7 @@ lib/kit/        build (parts, hairlined meshes, hinges, primitives through a coo
                 displays), ordnance (missile bodies, seekers)
 lib/real/       the realistic render style (Line / Real switch, key H): stage (sky, sun, shadows, apron, fog, bloom,
                 material swap), materials (PBR library + triplanar skin), textures (procedural), plume (afterburner)
+lib/range/      the shooting range for small arms: hall, pop-up targets, gloved hands, controller, overlay state
 lib/stages/     apron (aircraft), plate (any ground plate: grid, optional ruler; small arms use a cm bench mat)
 lib/catalog/    categories (domains and shelves), types (ModelDef, three-free), index (the MODELS registry)
 lib/models/<category>/<id>/   def.ts (catalogue data) + model.ts (default export: ModelFactory)
@@ -131,6 +132,9 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - Smoke and fire in the real view come from `lib/real/smoke.ts`: soft camera-facing puffs (instanced, lit by the sun,
   fogged; fire additive). Lay trail puffs by distance along the path, wider than their spacing, never one per frame
   (that comes out as a dotted line of balls).
+- Bloom only takes what is brighter than the sky (`bloomT` per time of day, just over the midday horizon) and is
+  capped, so the sky never hazes what stands in front of it and a sun in frame doesn't white the screen out. Keep
+  anything meant to glow (flames, flashes, plumes) well above it.
 - Never add, remove, show or hide lights at runtime in the real view: a change in the light count recompiles every
   shader in the scene (a multi-second freeze per explosion). Keep a fixed pool in a visible group and vary intensity;
   compile new effects' materials when the real view comes on (`renderer.compileAsync` with the composer's target).
@@ -151,6 +155,31 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   fan tones detuned to beat, buzz-saw near full power, start-up whine and light-off thump, afterburner rumble and
   crackle, runway rumble, wind and the touchdown chirp, through a short outdoor reverb. No recorded samples.
 
+## The shooting range (small arms)
+
+- Key G on a small arm (Real view; it switches the style on by itself): the weapon leaves its bench for gloved hands
+  on lane 3 of an indoor range (`lib/range/`). The weapon supplies a `RangeGun` (`lib/range/types.ts`: sight line,
+  muzzle, grip, recoil, trigger/magazine/rack/safety, and `hold(on, {ground, flash})` so its cases and dropped
+  magazines land on the floor or a counter and its flash lights the hall); the range owns the hall (`chamber.ts`),
+  the pop-up targets (`targets.ts`), the hands (`hands.ts`), the camera, the drill and the overlay state
+  (`hud.ts` → `components/RangeHud.tsx`, which replaces the viewer's panels while `ModelRuntime.hud()` returns one).
+  Reference: the M17 (`rangeGun` in its model.ts). A rifle needs its own hands (a long-gun grip) and sight line.
+- The hands (`hands.ts`) are anatomy, not boxes: metacarpals, palm and heel pads, jointed fingers and thumbs as rounded
+  cones and ellipsoids, blended with smooth unions and meshed once by surface nets (`sdf.ts`, coarse-to-fine, each hand
+  in its own task so entry never stalls). Fingerless gloves: one material whose colour, roughness, bump depth and skin
+  sheen come per vertex from the region (glove, knuckle pads, strap, skin, nail), with contact shading baked from the
+  field. The index finger is a separate mesh hinged at its knuckle and presses the trigger on each shot.
+- Aiming: a quick right click toggles the aim (as Z does), a held right button aims until it is released.
+- Controls go through the engine's first-person camera with `EyeSpec.lock`: the first click captures the pointer,
+  then raw mouse look, buttons and wheel go to the model (no part picking); a refused lock falls back to drag-look with
+  click-to-fire. Escape releases the pointer, a second Escape leaves; G, H and I leave too.
+- The bullet goes along the sights (zeroed at 15 m) with a small spread, more from the hip and on the move; one ray per
+  shot against the hall and target colliders (`userData.surface` / `userData.target`). Scoring A 5 · C 3 · D 1 ·
+  no-shoot −10; the drill is 45 s after a random-delay shot-timer beep; the best score is kept per weapon.
+- Lighting: `RealSpec.stage()` hands the stage an indoor override (room environment, no sky, the sun overhead as the
+  house lights, haze); light theme = house lights up, dark theme = low light (floods only, muzzle flash lights the room).
+  Still no runtime lights: lamps are emissive meshes.
+
 ## Rules that keep the look and the behaviour consistent
 
 - Small arms (pistols, rifles, sniper rifles, machine guns) float raised above a floor with no stand or post.
@@ -167,7 +196,8 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   silhouette, and the Real view shades them smooth. Sharp single chamfers everywhere look boxy.
 - Trace side profiles from a true side photo at a known scale (overall length ÷ pixels) and say so in a comment;
   draw the profiles back over the photo to check them (the M17 grip and slide came out 25–30 % too big by eye).
-- Keys: one letter per action, unique per model. Reserved by the host: I, T, M, H, Escape, [, ], /.
+- Keys: one letter per action, unique per model. Reserved by the host: I, T, M, H, Escape, [, ], /. On the range the
+  range takes W A S D, F, R, E, Z, X, C, P, Space, Shift and the arrows while it is on.
   The catalogue warns in dev about clashes and unknown parts.
 - Demos must survive slow or throttled frames: chain steps with `script.when(cond, f)` (wait until the model has
   settled), not fixed delays alone. End with `script.end()` and leave the model lit.
