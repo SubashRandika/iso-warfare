@@ -79,7 +79,9 @@ const MAGWELL: Cmd[] = [['M', 562, 293], ['L', 697, 293], ['L', 697, 400], ['L',
 const LIP: Cmd[] = [['M', 574, 368], ['L', 697, 388], ['L', 697, 401], ['L', 690, 403], ['L', 578, 383], ['Q', 572, 382, 572, 376]];
 const LOWER: Cmd[] = [['M', 695, 293], ['L', 878, 293], ['L', 878, 322], ['Q', 872, 340, 852, 345], ['L', 800, 352], ['L', 695, 356]];
 /** the trigger guard: a loop from the magazine well's back, under the trigger and up the grip's front into the receiver */
-const GUARD: Cmd[] = [['M', 697, 392], ['Q', 706, 414, 736, 414], ['L', 772, 414], ['Q', 795, 413, 806, 396], ['L', 812, 352], ['L', 802, 352], ['L', 797, 388], ['Q', 789, 405, 770, 406], ['L', 738, 406], ['Q', 712, 406, 704, 392]];
+const GUARD: Cmd[] = [['M', 700, 398], ['Q', 706, 414, 736, 414], ['L', 772, 414], ['Q', 795, 413, 806, 396], ['L', 812, 352], ['L', 802, 352], ['L', 797, 388], ['Q', 789, 405, 770, 406], ['L', 738, 406], ['Q', 714, 406, 708, 398]];
+/** the lower's web behind the magazine well: the guard grows out of it (its curl starts inside, so there is no seam) */
+const GUARD_WEB: Cmd[] = [['M', 690, 352], ['L', 712, 356], ['L', 712, 392], ['Q', 712, 405, 720, 410], ['L', 716, 414], ['Q', 701, 412, 694, 404], ['L', 690, 400]];
 const TRIGGER: Cmd[] = [['M', 751, 354], ['L', 760, 354], ['Q', 754, 374, 762, 392], ['Q', 762, 398, 757, 396], ['Q', 747, 378, 751, 354]];
 /** the grip, raked about 12°, fuller at the base */
 const GRIP: Cmd[] = [['M', 800, 345], ['L', 866, 330], ['Q', 880, 325, 886, 336], ['Q', 898, 380, 908, 430], ['Q', 918, 480, 925, 512], ['Q', 927, 524, 918, 526], ['L', 842, 529], ['Q', 832, 530, 831, 520], ['Q', 826, 470, 818, 420], ['Q', 810, 380, 800, 345]];
@@ -155,6 +157,7 @@ const model: ModelFactory = ({ E, snd, script, say, style, def, open, arrive }) 
   add(pLower, across(profile(MAGWELL), -0.0135, 0.0135, 0.0014, 3));
   add(pLower, across(profile(LIP), -0.0158, 0.0158, 0.0016, 3));
   add(pLower, across(profile(LOWER), -LX, LX, 0.0012, 3));
+  add(pLower, across(profile(GUARD_WEB), -LX, LX, 0.0012, 3));
   add(pLower, across(profile(GUARD), -0.006, 0.006, 0.0012, 2));
   well(pLower, [V(-0.0125, yy(386), zx(576)), V(0.0125, yy(386), zx(576)), V(0.0125, yy(402), zx(692)), V(-0.0125, yy(402), zx(692))], V(0, -1, 0.15));   // the well's mouth
   for (const [ix, iy] of [[568, 300], [852, 302]] as const) add(pLower, cylX(0.003, -0.0137, 0.0137, yy(iy), zx(ix), 12), undefined, { real: 'steel' });   // pivot and takedown pins
@@ -321,13 +324,60 @@ const model: ModelFactory = ({ E, snd, script, say, style, def, open, arrive }) 
   const pStock = part('stock', gun);
   add(pStock, cylZ(0.0178, -0.012, 0.0, 22, 0, yy(264.5)), undefined, { real: 'phosphate' });          // end plate and castle nut
   add(pStock, cylZ(0.0162, zx(1221), -0.012, 22, 0, yy(264.5)), undefined, { real: 'anod' });          // buffer tube
+  // The stock is a moulded skeleton: a raised outer frame and tube housing with recessed pockets between them (one with
+  // the sling slot), a diagonal strut carrying horizontal grip ribs, a rubber pad with a column of holes, a QD socket. The
+  // kinds of detail follow a close photo of the stock; their places are taken from the side photo (its pixels, like the
+  // outline).
+  /** a rounded rectangle in the side photo's pixels */
+  const rrect = (x0: number, y0: number, x1: number, y1: number, r = 3): Cmd[] => [['M', x0 + r, y0], ['L', x1 - r, y0], ['Q', x1, y0, x1, y0 + r], ['L', x1, y1 - r], ['Q', x1, y1, x1 - r, y1], ['L', x0 + r, y1], ['Q', x0, y1, x0, y1 - r], ['L', x0, y0 + r], ['Q', x0, y0, x0 + r, y0]];
+  const POCKETS: Cmd[][] = [
+    [['M', 1001, 321], ['L', 1072, 321], ['Q', 1076, 321, 1076, 325], ['L', 1076, 343], ['Q', 1076, 347, 1072, 347], ['L', 1012, 347], ['Q', 1004, 347, 1001, 341], ['L', 992, 327], ['Q', 991, 321, 997, 321]],   // under the housing's front
+    rrect(1122, 308, 1205, 331),                                                // round the sling slot
+    rrect(1152, 354, 1206, 376),
+    rrect(1179, 380, 1206, 401),
+  ];
   const slide = new THREE.Group(); pStock.add(slide);
-  add(slide, across(profile(STOCK), -0.019, 0.019, 0.004, 4), undefined, { real: 'poly' });
+  add(slide, across(profile(STOCK), -0.014, 0.014, 0.002, 2), undefined, { real: 'poly' });                       // the core: the pockets' floors
+  add(slide, across(profile(STOCK, POCKETS), -0.0185, 0.0185, 0.0035, 4), undefined, { real: 'poly' });          // the frame, the pockets cut through it
+  // the diagonal strut, standing a little proud, with its grip ribs: horizontal bars stacked down it
+  const strutL = (iy: number) => 1076 + (iy - 328) * (70 / 86), strutR = (iy: number) => 1112 + (iy - 326) * (82 / 86);
+  const STRUT: Cmd[] = [['M', 1080, 324], ['L', 1108, 324], ['Q', 1113, 324, 1115, 329], ['L', 1195, 409], ['Q', 1198, 415, 1191, 416], ['L', 1150, 416], ['Q', 1145, 416, 1143, 411], ['L', 1076, 330], ['Q', 1075, 324, 1080, 324]];
+  add(slide, across(profile(STRUT), -0.0205, 0.0205, 0.0015, 2), undefined, { real: 'poly' });
+  {
+    const ribs: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 16; i++) {
+      const iy = 331.5 + i * 5.2, a = strutL(iy) + 3.5, b = strutR(iy) - 3.5;
+      for (const k of SIDES) {
+        const pa = V(k * 0.0206, yy(iy), zx(a)), pb = V(k * 0.0206, yy(iy), zx(b));
+        lines(slide, [[pa, pb]]);
+        ribs.push(new THREE.TubeGeometry(new THREE.LineCurve3(pa, pb), 1, 0.0009, 6));
+      }
+    }
+    realAdd(slide, merge(ribs), 'poly');
+  }
+  // the sling slot in its pocket, the crease along the bottom of the tube housing, a screw in the front recess
+  for (const k of SIDES) {
+    const x = k * 0.01405;
+    well(slide, [V(x, yy(315), zx(1132)), V(x, yy(315), zx(1196)), V(x, yy(324), zx(1196)), V(x, yy(324), zx(1132))], V(k, 0, 0));
+    lines(slide, [[V(k * 0.01862, yy(300), zx(1206)), V(k * 0.01862, yy(300), zx(1118))], [V(k * 0.01862, yy(300), zx(1072)), V(k * 0.01862, yy(300), zx(985))]]);
+    add(slide, cylX(0.0022, k * 0.0138, k * 0.0152, yy(339), zx(1041), 10), undefined, { real: 'steel' });
+  }
+  // a QD sling socket at the back of the housing: a raised ring with its bore
+  for (const k of SIDES) {
+    const qz = zx(1192), qy = yy(286);
+    add(slide, cylX(0.0055, k * 0.0178, k * 0.0198, qy, qz, 18), undefined, { real: 'phosphate' });
+    const bore = new THREE.Mesh(new THREE.CircleGeometry(0.0028, 14).rotateY(k * Math.PI / 2), E.mats.recess); bore.position.set(k * 0.0199, qy, qz); bore.raycast = () => {}; slide.add(bore);
+  }
+  // the butt pad: rubber, a column of holes down each side
   add(slide, across(profile(BUTTPAD), -0.0205, 0.0205, 0.003, 3), undefined, { real: 'rubber' });
-  for (let i = 0; i < 9; i++) realAdd(slide, new THREE.BoxGeometry(0.039, 0.0035, 0.0028).translate(0, yy(250 + i * 21), zx(1268) - 0.0012), 'rubber');   // the pad's ribs
-  { const ring = new THREE.TorusGeometry(0.0055, 0.0012, 6, 16); ring.rotateY(Math.PI / 2); ring.translate(0, yy(215), zx(1217)); add(slide, ring, undefined, { real: 'phosphate' }); }   // sling loop
-  for (const k of SIDES) lines(slide, [[V(k * 0.0191, yy(355), zx(1085)), V(k * 0.0191, yy(436), zx(1195))], [V(k * 0.0191, yy(345), zx(1095)), V(k * 0.0191, yy(426), zx(1205))]]);   // the ribbed cheek panel's edges
-  add(slide, rbox(0.012, 0.01, 0.02, 0, yy(340), zx(990), 0.003), undefined, { real: 'poly' });         // the release lever under the front
+  for (let i = 0; i < 16; i++) for (const k of SIDES) {
+    const t = i / 15, h = new THREE.Mesh(new THREE.CircleGeometry(0.0016, 12).rotateY(k * Math.PI / 2), E.mats.recess);
+    h.position.set(k * 0.0207, yy(242 + t * 182), zx(1251 + t * 3)); h.raycast = () => {}; slide.add(h);
+  }
+  // the latch on top of the housing, the sling loop at the heel, the release lever under the front
+  add(slide, rbox(0.009, 0.005, 0.016, 0, yy(229), zx(1022), 0.002), undefined, { real: 'poly' });
+  { const ring = new THREE.TorusGeometry(0.0055, 0.0012, 6, 16); ring.rotateY(Math.PI / 2); ring.translate(0, yy(215), zx(1217)); add(slide, ring, undefined, { real: 'phosphate' }); }
+  add(slide, rbox(0.01, 0.007, 0.03, 0, yy(296), zx(930), 0.0025), undefined, { real: 'poly' });
 
   // ═════ magazine ═════
   const pMag = part('magazine', gun);

@@ -51,7 +51,9 @@ model is its own chunk; three.js loads with the first model.
    about its front lug, a field strip that lays the parts beside the rifle, laminated-wood grain drawn on a canvas, matt
    sights so they don't mirror the range's lights), `lib/models/rifles/hk416/model.ts` (scale taken from the Picatinny
    rail's 10.01 mm slot pitch, an upper built in two halves so the ejection port is cut into the right side only, a sprung
-   port cover, quad rail, holographic sight with a flip-to-side magnifier, an aiming laser, a telescoping stock; through an
+   port cover, quad rail, holographic sight with a flip-to-side magnifier, an aiming laser, a telescoping skeleton stock
+   (a thin core extrusion under a thicker frame extrusion whose holes are the pockets, so they read as moulded recesses,
+   a proud ribbed strut, a holed rubber pad); through an
    AR rear sight the eye sees a ring round a large aperture, so it is modelled as one, not as a plate with a pinhole)
    and `lib/models/fighters/` (large lofted airframes,
    hinged surfaces, gear, bays). Several models of one kind share a sim the way the fighters share `jet/sim.ts`.
