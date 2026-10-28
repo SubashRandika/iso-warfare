@@ -35,8 +35,13 @@ export interface PistolGrip {
 /** a rifle's support hand: it holds the handguard round this point on the bore line (the handguard's radius r) */
 export interface ForeGrip { at: THREE.Vector3; r: number; dir: THREE.Vector3 }
 
-/** a magnified optic: the eye looks along rear → front from `relief` behind the eyepiece; zoom is its power range */
-export interface OpticSight { rear: THREE.Vector3; front: THREE.Vector3; relief: number; zoom: [number, number] }
+/**
+ * an optic: the eye looks along rear → front from `relief` behind the eyepiece; zoom is its power range. A 'scope'
+ * (the default) is looked through: the view magnifies behind the tube's picture. A 'holo' (holographic or red-dot
+ * sight) is unmagnified and looked over: only its reticle is drawn, collimated on the optic's axis, and the weapon stays
+ * in view. `reticle`: a horseshoe with a fine crosshair (scopes) or a ring and dot (holographic sights and magnifiers).
+ */
+export interface OpticSight { rear: THREE.Vector3; front: THREE.Vector3; relief: number; zoom: [number, number]; kind?: 'scope' | 'holo'; reticle?: 'horseshoe' | 'holo' }
 
 export interface RangeGun {
   name: string;                    // 'M17'
@@ -62,6 +67,8 @@ export interface RangeGun {
   auto?(): boolean;
   /** loudness of the report, 1 = unsuppressed (sets how loudly the hall answers) */
   loud?(): number;
+  /** a laser aiming module that is switched on: its emitter and beam direction (the range puts its dot where it lands) */
+  laser?(): { from: THREE.Vector3; dir: THREE.Vector3 } | null;
   trigger(): TriggerResult;
   /** magazine out (it falls away) or a full one in */
   magazine(): void;

@@ -16,7 +16,7 @@ export interface Category { id: CategoryId; domain: DomainId; name: string; one:
 export interface PartInfo { id: string; name: string; text: string; click?: string }
 
 /** Countries with a drawn flag (components/Flag.tsx): add the flag there when a model brings a new country. */
-export type CountryId = 'US' | 'RU' | 'CN' | 'SU';
+export type CountryId = 'US' | 'RU' | 'CN' | 'SU' | 'DE';
 
 /** The facts on the model's information card. */
 export interface ModelInfo {

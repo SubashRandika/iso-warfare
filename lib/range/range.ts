@@ -122,13 +122,15 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   let sec = 0;
 
   // ── weapon poses in camera space (x right, y up, −z ahead), from whichever sight is in use (irons or the optic) ──
-  const P = { rear: gun.sight.rear, front: gun.sight.front, optic: false, zoom: [1, 1] as [number, number], qAds: new THREE.Quaternion(), pAds: new THREE.Vector3(), qHip: new THREE.Quaternion(), pHip: new THREE.Vector3() };
+  const P = { rear: gun.sight.rear, front: gun.sight.front, optic: false, holo: false, ring: false, zoom: [1, 1] as [number, number], qAds: new THREE.Quaternion(), pAds: new THREE.Vector3(), qHip: new THREE.Quaternion(), pHip: new THREE.Vector3() };
   let poseKey = '';
   function sightPoses() {
-    const o = gun.optic?.() ?? null, key = o ? 'optic' : 'irons';
+    const o = gun.optic?.() ?? null, key = o ? `${o.kind ?? 'scope'}:${o.rear.z.toFixed(4)}` : 'irons';
     if (key === poseKey) return P;
     poseKey = key;
     P.rear = o ? o.rear : gun.sight.rear; P.front = o ? o.front : gun.sight.front; P.optic = !!o; P.zoom = o ? o.zoom : [1, 1];
+    P.holo = o?.kind === 'holo'; P.ring = o?.reticle === 'holo';
+    power = clamp(power, P.zoom[0], P.zoom[1]);
     const relief = o ? o.relief : gun.relief;
     const qLevel = new THREE.Quaternion().setFromUnitVectors(P.front.clone().sub(P.rear).normalize(), new THREE.Vector3(0, 0, 1));
     P.qAds.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(qLevel);
@@ -138,24 +140,27 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     P.pHip.copy(hipRear).sub(P.rear.clone().applyQuaternion(P.qHip));
     return P;
   }
-  // ── the scope's picture: drawn straight in clip space over everything, centred where the optic's axis points ──
+  // ── the scope's picture: drawn straight in clip space over everything, centred where the optic's axis points; for a
+  // holographic sight only its ring and dot (uTube 0), sized by uRet (on screen a reticle grows with the power) ──
   let power = 4, scoped = false;
   const scopeMat = new THREE.ShaderMaterial({
-    uniforms: { uAspect: { value: 1 }, uC: { value: new THREE.Vector2() }, uR: { value: 0.47 }, uIllum: { value: 3 } },
+    uniforms: { uAspect: { value: 1 }, uC: { value: new THREE.Vector2() }, uR: { value: 0.47 }, uIllum: { value: 3 }, uTube: { value: 1 }, uRing: { value: 0 }, uRet: { value: 1 } },
     vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
-    fragmentShader: `uniform float uAspect, uR, uIllum; uniform vec2 uC; varying vec2 vUv;
+    fragmentShader: `uniform float uAspect, uR, uIllum, uTube, uRing, uRet; uniform vec2 uC; varying vec2 vUv;
       void main() {
         vec2 p = (vUv - 0.5 - uC) * vec2(uAspect, 1.0);
-        float r = length(p), inside = smoothstep(uR, uR - 0.01, r);
-        float rim = smoothstep(uR * 0.7, uR, r) * 0.6;                               // the eyebox's dark edge
+        float r = length(p), inside = uTube > 0.5 ? smoothstep(uR, uR - 0.01, r) : 1.0;
+        float rim = smoothstep(uR * 0.7, uR, r) * 0.6 * uTube;                       // the eyebox's dark edge
         float px = fwidth(p.x) * 1.2;
-        float thick = (step(abs(p.y), 0.0055) * step(uR * 0.42, abs(p.x)) + step(abs(p.x), 0.0055) * step(uR * 0.42, -p.y));
-        float fine = (1.0 - smoothstep(0.0, px, abs(p.y))) * step(abs(p.x), uR * 0.42) * step(0.04, abs(p.x))
-                   + (1.0 - smoothstep(0.0, px, abs(p.x))) * step(-p.y, uR * 0.42) * step(0.04, -p.y);
-        float shoe = (1.0 - smoothstep(0.0012, 0.0012 + px, abs(r - 0.03))) * step(-0.016, p.y);   // horseshoe, open below
-        float dotc = 1.0 - smoothstep(0.0022, 0.0022 + px, r);
+        float cross = uTube * (1.0 - uRing);                                          // a scope's own crosshair
+        float thick = cross * (step(abs(p.y), 0.0055) * step(uR * 0.42, abs(p.x)) + step(abs(p.x), 0.0055) * step(uR * 0.42, -p.y));
+        float fine = cross * ((1.0 - smoothstep(0.0, px, abs(p.y))) * step(abs(p.x), uR * 0.42) * step(0.04, abs(p.x))
+                   + (1.0 - smoothstep(0.0, px, abs(p.x))) * step(-p.y, uR * 0.42) * step(0.04, -p.y));
+        float rr = 0.03 * uRet, w = max(0.0012 * uRet, px);
+        float shoe = (1.0 - smoothstep(w, w + px, abs(r - rr))) * mix(step(-0.016 * uRet, p.y), 1.0, uRing);   // horseshoe open below, or a whole ring
+        float dotc = 1.0 - smoothstep(0.0022 * min(uRet, 1.0), 0.0022 * min(uRet, 1.0) + px, r);
         float black = clamp(thick + fine, 0.0, 1.0) * inside, red = clamp(shoe + dotc, 0.0, 1.0) * inside;
-        float a = max(max(1.0 - inside, rim * inside), max(black, red));
+        float a = uTube > 0.5 ? max(max(1.0 - inside, rim * inside), max(black, red)) : red;
         vec3 col = vec3(1.0, 0.03, 0.015) * uIllum * red;
         gl_FragColor = vec4(col, a);
       }`,
@@ -395,6 +400,34 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     snd.click(0, 0.45);
   }
 
+  // ── a laser aiming module: its dot lands on whatever the beam meets (walls, targets, the floor) ──
+  const laserDot = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d')!, g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,0.85)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(c);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0.6, 9, 1.4), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    mat.userData.realStyle = true;
+    const m = new THREE.Mesh(new THREE.CircleGeometry(1, 16), mat); m.visible = false; m.raycast = () => {}; m.renderOrder = 3; root.add(m);
+    return { m, dispose() { m.geometry.dispose(); mat.dispose(); tex.dispose(); } };
+  })();
+  const laserRay = new THREE.Raycaster(); laserRay.far = 60;
+  function aimLaser() {
+    const l = on && !entering ? gun.laser?.() ?? null : null;
+    laserDot.m.visible = false;
+    if (!l) return;
+    const from = gun.root.localToWorld(tmpA.copy(l.from)), dir = tmpB.copy(l.dir).transformDirection(gun.root.matrixWorld);
+    laserRay.set(from, dir);
+    const h = laserRay.intersectObjects(colliders, false).find(i => { const t = i.object.userData.target as Target | undefined; return !t || T.exposed(t); });
+    if (!h) return;
+    nrm.copy(h.face?.normal ?? dir.clone().negate()).transformDirection(h.object.matrixWorld); if (nrm.dot(dir) > 0) nrm.negate();
+    laserDot.m.position.copy(h.point).addScaledVector(nrm, 0.003);
+    laserDot.m.lookAt(tmpC.copy(laserDot.m.position).add(nrm));
+    laserDot.m.scale.setScalar(0.005 + h.distance * 0.0016);         // (a little larger than life, so it reads at 25 m)
+    laserDot.m.visible = true;
+  }
+
   const eyeSpec: EyeSpec = {
     fov: FOV, near: 0.02, far: 120,
     pose(pos, quat) {
@@ -406,11 +439,15 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     },
     frame(cam) {
       const S = sightPoses();
-      setScoped(S.optic && aimK > 0.93 && !entering);
+      setScoped(S.optic && !S.holo && aimK > 0.93 && !entering);
+      const holoOn = S.holo && aimK > 0.6 && !entering;           // looking over a holographic sight: its reticle only
+      scopeQuad.visible = scoped || holoOn;
+      scopeMat.uniforms.uTube.value = scoped ? 1 : 0; scopeMat.uniforms.uRing.value = S.ring ? 1 : 0;
+      scopeMat.uniforms.uRet.value = S.ring ? 0.45 * (scoped ? power : 1) : 1;
       const f = scoped ? scopeFov() : THREE.MathUtils.lerp(FOV, S.optic ? FOV_AIM : aimFov, smooth(aimK));
       if (Math.abs(cam.fov - f) > 0.01) { cam.fov = f; cam.updateProjectionMatrix(); }
       handPose(cam);
-      if (scoped) {                                    // the picture rides on where the optic's axis points
+      if (scopeQuad.visible) {                         // the picture rides on where the optic's axis points
         gun.root.updateMatrixWorld(true);
         const a = gun.root.localToWorld(tmpA.copy(S.rear)), b = gun.root.localToWorld(tmpB.copy(S.front));
         const far = b.sub(a).normalize().multiplyScalar(60).add(a).project(cam);
@@ -436,6 +473,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
       }
       if (leaving) lower(cam, (sec - leaving.t0) / 0.3);
       gun.root.updateMatrixWorld(true);
+      aimLaser();
     },
     exit() { exit(true); },
     lock: {
@@ -627,7 +665,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     dispose() {
       exit(); dead = true;
       // the hall and targets stay built for the next weapon (kits); so do the hands' meshes (lib/range/hands.ts)
-      root.removeFromParent(); hands.dispose(); fx.dispose(); holes.dispose(); scopeMat.dispose(); scopeQuad.geometry.dispose();
+      root.removeFromParent(); hands.dispose(); fx.dispose(); holes.dispose(); scopeMat.dispose(); scopeQuad.geometry.dispose(); laserDot.dispose();
     },
   };
 }

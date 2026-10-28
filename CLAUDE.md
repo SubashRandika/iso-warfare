@@ -49,7 +49,11 @@ model is its own chunk; three.js loads with the first model.
    written in the photo's own pixels and converted by `px`, an open stamped receiver of two walls and a floor so the
    carrier lifts out of a real channel, a carrier carrying its gas piston and reciprocating handle, a magazine that rocks
    about its front lug, a field strip that lays the parts beside the rifle, laminated-wood grain drawn on a canvas, matt
-   sights so they don't mirror the range's lights) and `lib/models/fighters/` (large lofted airframes,
+   sights so they don't mirror the range's lights), `lib/models/rifles/hk416/model.ts` (scale taken from the Picatinny
+   rail's 10.01 mm slot pitch, an upper built in two halves so the ejection port is cut into the right side only, a sprung
+   port cover, quad rail, holographic sight with a flip-to-side magnifier, an aiming laser, a telescoping stock; through an
+   AR rear sight the eye sees a ring round a large aperture, so it is modelled as one, not as a plate with a pinhole)
+   and `lib/models/fighters/` (large lofted airframes,
    hinged surfaces, gear, bays). Several models of one kind share a sim the way the fighters share `jet/sim.ts`.
 4. Check: `npx tsc --noEmit`, `npx next build`, then open `/?model=<id>` and run each action, the demo, both themes.
 
@@ -179,7 +183,8 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   magazines land on the floor or a counter and its flash lights the hall); the range owns the hall (`chamber.ts`),
   the pop-up targets (`targets.ts`), the hands (`hands.ts`), the camera, the drill and the overlay state
   (`hud.ts` → `components/RangeHud.tsx`, which replaces the viewer's panels while `ModelRuntime.hud()` returns one).
-  References: the M17, the M8 and the AK-47 (`rangeGun` in each model.ts; the AK on its iron sights, with no hold-open). A rifle sets `kind: 'rifle'`, `fore` (where the support
+  References: the M17, the M8, the AK-47 and the HK416 (`rangeGun` in each model.ts; the AK on its iron sights, with no
+  hold-open; the HK416 with a holographic sight, magnifier and laser). A rifle sets `kind: 'rifle'`, `fore` (where the support
   hand holds the handguard), `hip`, `optic()` (the fitted optic's sight line, relief and power range, or null for the
   irons), `auto()` and `loud()` (a suppressed report makes the hall answer quietly); `grip.fingers` sets how far below the
   web the middle finger sits on its grip (its trigger guard hangs lower than a pistol's).
@@ -197,6 +202,11 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   targets per bench size (`kits`) and each weapon's hand meshes (meshed a few milliseconds a frame: `meshSteps` and
   `handMeshes` are generators; a worker was tried, but the production build ships `new Worker(new URL(...))` as a raw
   file instead of bundling it) are kept for the session, and their materials are never disposed.
+- Holographic and red-dot sights: `optic()` returns `kind: 'holo'` (unmagnified): aiming looks over the sight and only
+  its ring and dot are drawn on the optic's axis; the weapon stays in view. A magnifier flipped in behind it is a
+  `kind: 'scope'` with `reticle: 'holo'` (the ring and dot in a 3× tube picture). The pose cache is keyed by the optic's
+  kind and eyepiece, so flipping a magnifier re-poses the rifle. A laser module returns `laser()` (emitter and beam in the
+  weapon's coordinates): the range puts a glowing dot where the beam meets the hall or a target.
 - Optics: aiming ends looking through the scope: the view magnifies (wheel sets the power) behind a clip-space shader
   picture (tube, eyebox rim, second-focal-plane reticle with an illuminated horseshoe and dot) centred on where the
   optic's axis points, so sway and recoil move the reticle with the shot. The rifle and hands are hidden there by moving
@@ -235,7 +245,8 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - Trace side profiles from a true side photo at a known scale (overall length ÷ pixels) and say so in a comment;
   draw the profiles back over the photo to check them (the M17 grip and slide came out 25–30 % too big by eye).
 - Keys: one letter per action, unique per model. Reserved by the host: I, T, M, H, Escape, [, ], /. On the range the
-  range takes W A S D, F, R, E, Z, X, C, P, Q, Space, Shift, the digits and the arrows while it is on.
+  range takes W A S D, F, R, E, Z, X, C, P, Q, Space, Shift, the digits and the arrows while it is on (other model keys,
+  such as the HK416's V magnifier and L laser, still work on the line).
   The catalogue warns in dev about clashes and unknown parts.
 - Demos must survive slow or throttled frames: chain steps with `script.when(cond, f)` (wait until the model has
   settled), not fixed delays alone. End with `script.end()` and leave the model lit.

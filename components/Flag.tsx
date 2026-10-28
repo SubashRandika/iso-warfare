@@ -3,7 +3,7 @@
 import type { JSX } from 'react';
 import type { CountryId } from '@/lib/catalog/types';
 
-export const COUNTRY_NAMES: Record<CountryId, string> = { US: 'United States', RU: 'Russia', CN: 'China', SU: 'Soviet Union' };
+export const COUNTRY_NAMES: Record<CountryId, string> = { US: 'United States', RU: 'Russia', CN: 'China', SU: 'Soviet Union', DE: 'Germany' };
 
 /** a five-pointed star centred at (cx, cy), outer radius r, one point toward angle a (radians, y down) */
 function star(cx: number, cy: number, r: number, a = -Math.PI / 2) {
@@ -65,7 +65,16 @@ function SU() {
   );
 }
 
-const FLAGS: Record<CountryId, () => JSX.Element> = { US, RU, CN, SU };
+/** Germany, 5:3: black, red and gold bands */
+function DE() {
+  return (
+    <svg viewBox="0 0 5 3">
+      <rect width="5" height="1" fill="#000" /><rect y="1" width="5" height="1" fill="#DD0000" /><rect y="2" width="5" height="1" fill="#FFCE00" />
+    </svg>
+  );
+}
+
+const FLAGS: Record<CountryId, () => JSX.Element> = { US, RU, CN, SU, DE };
 
 export function Flag({ country }: { country: CountryId }) {
   const F = FLAGS[country];
