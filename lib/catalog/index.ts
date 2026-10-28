@@ -9,8 +9,10 @@ import { j20 } from '../models/fighters/j20/def';
 import { b2 } from '../models/bombers/b2/def';
 import { b52 } from '../models/bombers/b52/def';
 import { m17 } from '../models/pistols/m17/def';
+import { m8 } from '../models/rifles/m8/def';
+import { ak47 } from '../models/rifles/ak47/def';
 
-export const MODELS: ModelDef[] = [f22, f35, su57, j20, b2, b52, m17];
+export const MODELS: ModelDef[] = [f22, f35, su57, j20, b2, b52, m17, m8, ak47];
 
 export { CATEGORIES, DOMAINS };
 export const DEFAULT_MODEL = 'f22';

@@ -7,11 +7,13 @@ export type TriggerResult = 'shot' | 'click' | 'safe' | 'locked' | 'busy';
 
 export interface GunState {
   rounds: number; cap: number; chamber: boolean; magIn: boolean; safe: boolean;
-  /** slide locked back on an empty magazine */
+  /** slide (or bolt) locked back on an empty magazine */
   locked: boolean;
   /** a cycle or magazine change is still moving */
   busy: boolean;
   night: boolean;
+  /** the selector's setting, for weapons that have one ('safe', 'semi', 'auto') */
+  mode?: string;
 }
 
 /** a pistol grip, for the hands that hold it */
@@ -26,10 +28,20 @@ export interface PistolGrip {
   trigger: THREE.Vector3;
   /** height and half-width of the frame below the slide, where the thumbs lie forward */
   thumbY: number; frameHalf: number;
+  /** how far down the grip from the web the middle finger sits, under the trigger guard (default 0.004: a pistol) */
+  fingers?: number;
 }
+
+/** a rifle's support hand: it holds the handguard round this point on the bore line (the handguard's radius r) */
+export interface ForeGrip { at: THREE.Vector3; r: number; dir: THREE.Vector3 }
+
+/** a magnified optic: the eye looks along rear → front from `relief` behind the eyepiece; zoom is its power range */
+export interface OpticSight { rear: THREE.Vector3; front: THREE.Vector3; relief: number; zoom: [number, number] }
 
 export interface RangeGun {
   name: string;                    // 'M17'
+  /** a pistol is held out in both hands; a rifle is shouldered, its support hand on the handguard (`fore`) */
+  kind?: 'pistol' | 'rifle';
   calibre: string;                 // '9×19 mm'
   root: THREE.Object3D;
   /** the sight line: top centre of the rear notch and the top of the front post */
@@ -37,9 +49,19 @@ export interface RangeGun {
   muzzle: THREE.Vector3;
   /** eye to rear sight when aiming, metres (arm's length for a pistol) */
   relief: number;
+  /** the optic that is fitted, if any: aiming then looks through it (magnified) instead of the iron sights */
+  optic?(): OpticSight | null;
+  /** the firing hand's grip (a rifle's pistol grip too) */
   grip: PistolGrip;
-  /** per shot: muzzle rise (radians) and push back toward the shooter (metres) */
-  recoil: { rise: number; push: number };
+  fore?: ForeGrip;
+  /** where the rear sight sits, in camera space, when not aiming (default: a pistol held low and right) */
+  hip?: THREE.Vector3;
+  /** per shot: muzzle rise (radians), push back toward the shooter (metres), and the eye's own kick (radians) */
+  recoil: { rise: number; push: number; cam?: number };
+  /** the selector is on automatic: holding the trigger keeps it firing */
+  auto?(): boolean;
+  /** loudness of the report, 1 = unsuppressed (sets how loudly the hall answers) */
+  loud?(): number;
   trigger(): TriggerResult;
   /** magazine out (it falls away) or a full one in */
   magazine(): void;

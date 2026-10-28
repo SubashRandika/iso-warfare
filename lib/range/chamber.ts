@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { decalMaterial, decalTexture } from '../real/decals';
+import { share } from '../real/textures';
 import type { BenchSpec } from './types';
 
 export type Surface = 'concrete' | 'fabric' | 'rubber' | 'steel' | 'wood' | 'paper';
@@ -20,21 +21,30 @@ export function rangeLayout(b: BenchSpec) {
     bench: { x0: b.cx - BW / 2, x1: b.cx + BW / 2, z0: b.cz - BD / 2, z1: line },
     X0: lane - 6, X1: lane + 6, Z0: line - 5, Z1: line + 27.5, top: floor + 3.4,
     /** booth partitions run from here to just past the line */
-    boothZ: line - 1.1,
+    boothZ: Math.min(line - 1.1, b.cz - BD / 2 - 0.35),
   };
 }
 export type RangeLayout = ReturnType<typeof rangeLayout>;
 
 type Rng = () => number;
 const rng = (seed: number): Rng => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-const canvas = (w: number, h = w) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return { c, x: c.getContext('2d')! }; };
+const canvas = (w: number, h = w) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return { c, x: c.getContext('2d', { willReadFrequently: true })! }; };
 const tex = (c: HTMLCanvasElement, srgb: boolean) => {
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; return t;
 };
-/** sprinkle n specks of `rgba` (a function of the rng) over a canvas */
-const speckle = (x: CanvasRenderingContext2D, W: number, H: number, n: number, r: Rng, col: (r: Rng) => string, s = 2) => {
-  for (let i = 0; i < n; i++) { x.fillStyle = col(r); x.fillRect(r() * W, r() * H, s, s); }
+type RGBA = [number, number, number, number];
+/** sprinkle n specks of colour (r, g, b, opacity: a function of the rng) over a canvas, straight into its pixels (tens of
+ *  thousands of fillRects, each parsing a colour string, took a few hundred milliseconds) */
+const speckle = (x: CanvasRenderingContext2D, W: number, H: number, n: number, r: Rng, col: (r: Rng) => RGBA, s = 2) => {
+  const img = x.getImageData(0, 0, W, H), d = img.data;
+  for (let i = 0; i < n; i++) {
+    const [cr, cg, cb, a] = col(r), px = Math.floor(r() * W), py = Math.floor(r() * H);
+    for (let v = py; v < Math.min(H, py + s); v++) for (let u = px; u < Math.min(W, px + s); u++) {
+      const o = (v * W + u) * 4; d[o] += (cr - d[o]) * a; d[o + 1] += (cg - d[o + 1]) * a; d[o + 2] += (cb - d[o + 2]) * a;
+    }
+  }
+  x.putImageData(img, 0, 0);
 };
 
 /** painted concrete block, running bond (one tile = 1.6 m square: four blocks across, eight courses) */
@@ -46,8 +56,8 @@ function blockTextures(r: Rng) {
     x.fillStyle = `rgb(${v},${v + 2},${v + 2})`; x.fillRect(ox + m / 2, oy + m / 2, bw - m, bh - m);
     b.x.fillStyle = '#c8c8c8'; b.x.fillRect(ox + m / 2, oy + m / 2, bw - m, bh - m);
   }
-  speckle(x, N, N, 26000, r, q => `rgba(${90 + q() * 60},${90 + q() * 60},${92 + q() * 60},0.35)`);
-  speckle(b.x, N, N, 30000, r, q => `rgba(${q() < 0.5 ? 255 : 60},${q() < 0.5 ? 255 : 60},${q() < 0.5 ? 255 : 60},0.22)`);
+  speckle(x, N, N, 26000, r, q => [90 + q() * 60, 90 + q() * 60, 92 + q() * 60, 0.35]);
+  speckle(b.x, N, N, 30000, r, q => [q() < 0.5 ? 255 : 60, q() < 0.5 ? 255 : 60, q() < 0.5 ? 255 : 60, 0.22]);
   const g = x.createLinearGradient(0, 0, 0, N); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(40,36,30,0.12)');   // scuffs low down
   x.fillStyle = g; x.fillRect(0, 0, N, N);
   return { map: tex(c, true), bumpMap: tex(b.c, false) };
@@ -56,7 +66,7 @@ function blockTextures(r: Rng) {
 function fabricTextures(r: Rng, base: [number, number, number]) {
   const N = 512, { c, x } = canvas(N), b = canvas(N);
   x.fillStyle = `rgb(${base.join(',')})`; x.fillRect(0, 0, N, N); b.x.fillStyle = '#808080'; b.x.fillRect(0, 0, N, N);
-  speckle(x, N, N, 30000, r, q => { const v = (q() - 0.5) * 22; return `rgba(${base[0] + v},${base[1] + v},${base[2] + v},0.6)`; }, 1);
+  speckle(x, N, N, 30000, r, q => { const v = (q() - 0.5) * 22; return [base[0] + v, base[1] + v, base[2] + v, 0.6]; }, 1);
   for (let y = 0; y < N; y += 2) { b.x.fillStyle = `rgba(255,255,255,${0.06 + r() * 0.06})`; b.x.fillRect(0, y, N, 1); }   // weave
   for (const k of [0, N / 2]) { x.fillStyle = 'rgba(10,10,12,0.85)'; x.fillRect(k - 2, 0, 4, N); b.x.fillStyle = '#000'; b.x.fillRect(k - 3, 0, 6, N); }
   return { map: tex(c, true), bumpMap: tex(b.c, false) };
@@ -65,8 +75,8 @@ function fabricTextures(r: Rng, base: [number, number, number]) {
 function rubberTextures(r: Rng) {
   const N = 512, { c, x } = canvas(N), b = canvas(N);
   x.fillStyle = '#1c1d1e'; x.fillRect(0, 0, N, N); b.x.fillStyle = '#909090'; b.x.fillRect(0, 0, N, N);
-  speckle(x, N, N, 40000, r, q => { const v = 18 + q() * 30; return `rgba(${v},${v},${v + 2},0.8)`; });
-  speckle(b.x, N, N, 40000, r, q => { const v = q() * 255; return `rgba(${v},${v},${v},0.5)`; });
+  speckle(x, N, N, 40000, r, q => { const v = 18 + q() * 30; return [v, v, v + 2, 0.8]; });
+  speckle(b.x, N, N, 40000, r, q => { const v = q() * 255; return [v, v, v, 0.5]; });
   for (let i = 0; i < 70; i++) {                                         // bullet pocks
     const px = r() * N, py = r() * N, rr = 2 + r() * 5;
     x.fillStyle = 'rgba(5,5,5,0.9)'; x.beginPath(); x.arc(px, py, rr, 0, Math.PI * 2); x.fill();
@@ -79,7 +89,7 @@ function rubberTextures(r: Rng) {
 function steelTextures(r: Rng) {
   const N = 512, { c, x } = canvas(N), ro = canvas(N);
   x.fillStyle = '#4a4a35'; x.fillRect(0, 0, N, N); ro.x.fillStyle = '#b0b0b0'; ro.x.fillRect(0, 0, N, N);
-  speckle(x, N, N, 16000, r, q => { const v = (q() - 0.5) * 26; return `rgba(${74 + v},${74 + v},${53 + v},0.5)`; }, 3);
+  speckle(x, N, N, 16000, r, q => { const v = (q() - 0.5) * 26; return [74 + v, 74 + v, 53 + v, 0.5]; }, 3);
   for (let i = 0; i < 26; i++) {
     const px = r() * N, py = r() * N, rr = 1.2 + r() * 2.5;
     x.fillStyle = `rgba(${105 + r() * 30},${105 + r() * 30},${100 + r() * 30},0.85)`; x.beginPath(); x.arc(px, py, rr, 0, Math.PI * 2); x.fill();
@@ -103,19 +113,26 @@ function worldUV(g: THREE.BufferGeometry, tile: number) {
 const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number) =>
   new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
 
+/** the hall's textures, drawn once and shared by every hall (one per bench size) */
+let hallTex: ReturnType<typeof drawHallTextures> | null = null;
+function drawHallTextures() {
+  const r = rng(29);
+  return { block: share(blockTextures(r)), fabric: share(fabricTextures(r, [46, 49, 54])), booth: share(fabricTextures(r, [74, 80, 88])), rubber: share(rubberTextures(r)), steel: share(steelTextures(r)) };
+}
+
 export function buildChamber(L: RangeLayout) {
-  const r = rng(29), group = new THREE.Group(); group.visible = false;
+  const r = rng(31), group = new THREE.Group(); group.visible = false;
   const { floor: F, line, X0, X1, Z0, Z1, top } = L;
-  const textures: THREE.Texture[] = [], mats: THREE.Material[] = [];
+  const textures: THREE.Texture[] = [], mats: THREE.Material[] = [];        // this hall's own (its decals)
   const std = (o: THREE.MeshStandardMaterialParameters) => { const m = new THREE.MeshStandardMaterial(o); m.userData.realStyle = true; mats.push(m); return m; };
-  const own = <T extends Record<string, THREE.Texture>>(t: T) => { textures.push(...Object.values(t)); return t; };
+  const TX = hallTex ??= drawHallTextures();
 
   const M = {
-    block: std({ ...own(blockTextures(r)), bumpScale: 1.4, roughness: 0.92 }),
-    fabric: std({ ...own(fabricTextures(r, [46, 49, 54])), bumpScale: 0.6, roughness: 1 }),
-    booth: std({ ...own(fabricTextures(r, [74, 80, 88])), bumpScale: 0.5, roughness: 1 }),
-    rubber: std({ ...own(rubberTextures(r)), bumpScale: 2.2, roughness: 0.96 }),
-    shield: std({ ...own(steelTextures(r)), metalness: 0.45, roughness: 1 }),
+    block: std({ ...TX.block, bumpScale: 1.4, roughness: 0.92 }),
+    fabric: std({ ...TX.fabric, bumpScale: 0.6, roughness: 1 }),
+    booth: std({ ...TX.booth, bumpScale: 0.5, roughness: 1 }),
+    rubber: std({ ...TX.rubber, bumpScale: 2.2, roughness: 0.96 }),
+    shield: std({ ...TX.steel, metalness: 0.45, roughness: 1 }),
     baffle: std({ color: 0x2f3236, metalness: 0.4, roughness: 0.72 }),
     ceiling: std({ color: 0x1d1f21, roughness: 0.96 }),
     alu: std({ color: 0xb4b9bd, metalness: 0.9, roughness: 0.34 }),
@@ -171,7 +188,7 @@ export function buildChamber(L: RangeLayout) {
   for (let i = 1; i <= L.lanes; i++) {
     if (i === L.mine) continue;
     const x = L.lane + (i - L.mine) * L.laneW, w = L.bench.x1 - L.bench.x0;
-    put(M.counter, box(x - w / 2, x + w / 2, -0.045, 0, line - 0.62, line));
+    put(M.counter, box(x - w / 2, x + w / 2, -0.045, 0, L.bench.z0, line));
     put(M.door, box(x - w / 2 + 0.02, x + w / 2 - 0.02, F + 0.12, -0.045, line - 0.05, line - 0.03));
   }
 

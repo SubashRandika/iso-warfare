@@ -4,7 +4,8 @@
 // primitive nearest it, so one material can blend finishes across the surface without stair-stepped edges, and an
 // ambient-occlusion value sampled from the field just off the surface (darker in creases).
 // Speed: every group and primitive is skipped outside its bounding box, and the fine grid is only evaluated, meshed
-// and stitched inside coarse cells the surface can pass through (a few per cent of the box).
+// and stitched inside coarse cells the surface can pass through (a few per cent of the box). meshSteps yields every so
+// often, so a caller can spread the work over frames (lib/range/hands.ts); meshSDF runs it straight through.
 import * as THREE from 'three';
 
 type P3 = [number, number, number];
@@ -72,6 +73,11 @@ function leaves(n: Node, out: Prim[] = []): Prim[] { if (isPrim(n)) out.push(n);
 
 /** polygonise the tree's surface at grid spacing h; each vertex carries its region in the `region` attribute */
 export function meshSDF(root: Node, h: number) {
+  const g = meshSteps(root, h);
+  for (;;) { const r = g.next(); if (r.done) return r.value; }
+}
+/** meshSDF, yielding between pieces of the work (a few milliseconds each) */
+export function* meshSteps(root: Node, h: number): Generator<void, THREE.BufferGeometry> {
   bounds(root);
   const prims = leaves(root);
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
@@ -83,7 +89,10 @@ export function meshSDF(root: Node, h: number) {
   // meshed and stitched; the rest of the box is never visited
   const c = 4, cx = Math.ceil((nx - 1) / c) + 1, cy = Math.ceil((ny - 1) / c) + 1, cz = Math.ceil((nz - 1) / c) + 1;
   const Gc = new Float32Array(cx * cy * cz), gat = (i: number, j: number, k: number) => i + cx * (j + cy * k);
-  for (let k = 0; k < cz; k++) for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) Gc[gat(i, j, k)] = evalNode(root, ox + i * c * h, oy + j * c * h, oz + k * c * h);
+  for (let k = 0; k < cz; k++) {
+    for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) Gc[gat(i, j, k)] = evalNode(root, ox + i * c * h, oy + j * c * h, oz + k * c * h);
+    if (k % 6 === 5) yield;
+  }
   const near = c * h * 1.05;                                   // more than the half-diagonal of a coarse cell
   const hot: number[] = [], done = new Uint8Array(nx * ny * nz);
   for (let K = 0; K < cz - 1; K++) for (let J = 0; J < cy - 1; J++) for (let I = 0; I < cx - 1; I++) {
@@ -91,6 +100,7 @@ export function meshSDF(root: Node, h: number) {
     for (let q = 0; q < 8 && !h8; q++) h8 = Math.abs(Gc[gat(I + (q & 1), J + ((q >> 1) & 1), K + (q >> 2))]) < near;
     if (!h8) continue;
     hot.push(I, J, K);
+    if (hot.length % 120 === 0) yield;
     for (let k = K * c; k <= Math.min(nz - 1, K * c + c); k++) for (let j = J * c; j <= Math.min(ny - 1, J * c + c); j++) for (let i = I * c; i <= Math.min(nx - 1, I * c + c); i++) {
       const q = at(i, j, k); if (done[q]) continue; done[q] = 1; F[q] = evalNode(root, ox + i * h, oy + j * h, oz + k * h);
     }
@@ -139,6 +149,7 @@ export function meshSDF(root: Node, h: number) {
   const nv = pos.length / 3, nrm = new Float32Array(nv * 3), reg = new Uint8Array(nv), ao = new Float32Array(nv), e = h * 0.35;
   const f = (x: number, y: number, z: number) => evalNode(root, x, y, z);
   for (let q = 0; q < nv; q++) {
+    if (q % 1500 === 1499) yield;
     let x = pos[q * 3], y = pos[q * 3 + 1], z = pos[q * 3 + 2];
     const d = f(x, y, z), gx = f(x + e, y, z) - d, gy = f(x, y + e, z) - d, gz = f(x, y, z + e) - d;
     const gl = Math.hypot(gx, gy, gz) || 1;

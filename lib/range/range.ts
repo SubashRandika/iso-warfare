@@ -4,14 +4,23 @@
 //   mouse look · left button fires · right button (or Z) aims down the sights · wheel zooms while aiming
 //   W A S D walk the bay behind the line · C kneel · Shift holds the breath (steadies the sights for a few seconds)
 //   R reloads (magazine out, a full one in, slide released) · X safety · Space starts the drill · Escape leaves
+//   1, 2 … change weapon (the next weapon opens straight onto the line) · Q back to the last one
 //
 // The bullet leaves the muzzle along the sights, zeroed at 15 m, so it goes where the sights point: aimed, the front
 // post sits in the rear notch on the screen's centre and the wobble of the hold moves the sights (and the shot); from
-// the hip the sights converge on the centre at 9 m. Free practice stands one target up at a time until it is hit; the
+// the hip the sights converge on the centre at 9 m. A pistol is carried out in the firing hand alone and the support
+// hand comes up to wrap it as it is aimed. A rifle is shouldered, its support hand on the handguard; with an
+// optic fitted, aiming ends looking through it: the view magnifies (the wheel sets the power) behind the scope's
+// picture (a shader: the tube's black, the eyebox's dark rim, a second-focal-plane reticle with an illuminated
+// horseshoe and dot), which rides on the optic's own axis, so sway and recoil move the reticle and the shot together.
+// On automatic it keeps firing while the trigger is held. Free practice stands one target up at a time until it is hit; the
 // drill (45 s after a shot-timer beep) pops targets at random across 5–25 m for shorter and shorter exposures, a few
 // of them no-shoots, and scores the hits (A 5, C 3, D 1, no-shoot −10).
-// Performance: everything is built on first use and compiled while the shooter steps up to the line; no lights are
-// added (the stage lights the hall from its sun and a room environment); one ray per shot; holes are one instanced draw.
+// Performance: the range is built as soon as the real view is up and its shaders compile off the main thread while
+// the weapon still lies on its bench; taking the line waits for that rather than stall on a compile. The hall and
+// targets (per bench size) and the hands (per weapon, meshed a little each frame) are kept for the session, and the renderer
+// is too (lib/iso/engine.ts), so changing weapon rebuilds almost nothing. No lights are added (the stage lights the
+// hall from its sun and a room environment); one ray per shot; holes are one instanced draw.
 import * as THREE from 'three';
 import type { Engine, EyeSpec } from '../iso/engine';
 import type { Sound } from '../core/sound';
@@ -22,6 +31,7 @@ import { createTargets, POINTS, type Target } from './targets';
 import { buildHands } from './hands';
 import type { RangeHud, RangeResult, ShotRecord, ShotZone } from './hud';
 import type { BenchSpec, RangeGun } from './types';
+import { MODELS } from '../catalog';
 
 const DRILL = 45, ZERO = 15, HIP_CONVERGE = 9;
 const EYE = 1.62, KNEEL = 1.06;
@@ -56,24 +66,46 @@ function createHoles(max: number) {
   };
 }
 
-export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSpec) {
-  const L = rangeLayout(bench);
-  const hall = buildChamber(L);
-  const T = createTargets(L, hall.shield);
-  const hands = buildHands(gun.grip); gun.root.add(hands.group);
+/** the hall and its targets for each bench size: built once and kept for the session */
+const kits = new Map<string, { hall: ReturnType<typeof buildChamber>; T: ReturnType<typeof createTargets> }>();
+/** the weapons that have a range, in the catalogue's order (keys 1, 2 …) */
+const WEAPONS = MODELS.filter(m => m.actions.some(a => a.id === 'range')).map(m => ({ id: m.id, name: m.tab }));
+/** where the shooter stood, handed from one weapon to the next on a weapon change (x from the lane's centre, z from
+ *  the bench's back edge: each weapon has its own bench, so the halls differ a little) */
+let carry: { from: string; to: string; at: number; x: number; z: number; yaw: number; pitch: number; kneel: boolean } | null = null;
+let lastWeapon: string | null = null;
+/** how a weapon's range changes weapon: its own catalogue id, and the viewer's way of opening another model */
+export interface RangeNav { id: string; open(id: string): void }
+
+export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSpec, nav?: RangeNav) {
+  const L = rangeLayout(bench), kitKey = [bench.w, bench.d, bench.cx, bench.cz, bench.height ?? 0.9].join();
+  let kit = kits.get(kitKey);
+  if (!kit) { const hall = buildChamber(L); kit = { hall, T: createTargets(L, hall.shield) }; kits.set(kitKey, kit); }
+  const { hall, T } = kit;
+  const hands = buildHands(gun.name, gun.grip, gun.kind === 'rifle' ? gun.fore : undefined); gun.root.add(hands.group);
   const fx = createParticles(E, 900, 320);
   const holes = createHoles(240);
   const root = new THREE.Group(); root.visible = false; root.add(hall.group, T.group, fx.group, holes.mesh); hall.group.visible = true;
   E.scene.add(root);
   const colliders: THREE.Object3D[] = [...hall.colliders, ...T.colliders];
+  // ready once the hands are meshed and every shader the range draws has compiled (off the main thread, while the
+  // weapon still lies on its bench): taking the line waits for that instead of stalling on a compile
+  let ready = false, wantIn = false, dead = false;
+  void hands.ready.then(() => Promise.all([E.warm(root, false), E.warm(hands.group, false)])).then(() => {
+    if (dead) return;
+    ready = true;
+    if (wantIn) { wantIn = false; enter(); }
+  });
   const ray = new THREE.Raycaster(); ray.far = 80;
 
   // ── lighting: house lights up (light theme), or a low-light range lit by the muzzle flash (dark theme) ──
   const focus = new THREE.Vector3(L.lane, L.floor, L.line + 10);
-  const BRIGHT: StageOverride = { sky: false, env: 'room', envI: 0.45, exposure: 0.95, fog: { color: 0x2c2d2e, density: 0.011 }, bloom: 0.2, bloomT: 2.6,
+  // the glow threshold sits above every lamp in the hall, so only muzzle flashes and sparks glow: the troffers bloomed
+  // into a white haze over the whole hall
+  const BRIGHT: StageOverride = { sky: false, env: 'room', envI: 0.45, exposure: 0.95, fog: { color: 0x2c2d2e, density: 0.008 }, bloom: 0.12, bloomT: 5,
     sun: { dir: new THREE.Vector3(0.18, 1, -0.5), intensity: 2.3, color: 0xfff3e6, focus, size: 19 } };
   // low light: only the floods over the target line are left on, dimmed; the hall falls away into the dark
-  const LOW: StageOverride = { sky: false, env: 'room', envI: 0.05, exposure: 1.2, fog: { color: 0x07080a, density: 0.016 }, bloom: 0.6, bloomT: 1.4,
+  const LOW: StageOverride = { sky: false, env: 'room', envI: 0.05, exposure: 1.2, fog: { color: 0x07080a, density: 0.016 }, bloom: 0.3, bloomT: 4,
     sun: { dir: new THREE.Vector3(-0.1, 1, 0.45), intensity: 0.32, color: 0xb4c2e0, focus, size: 19 } };
   const low = () => E.theme !== 'light';
 
@@ -89,17 +121,61 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   let captured = false, refused = false;
   let sec = 0;
 
-  // ── weapon poses in camera space (x right, y up, −z ahead) ──
-  const rearL = gun.sight.rear, frontL = gun.sight.front;
-  const qLevel = new THREE.Quaternion().setFromUnitVectors(frontL.clone().sub(rearL).normalize(), new THREE.Vector3(0, 0, 1));
-  const qAds = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(qLevel);
-  const pAds = new THREE.Vector3(0, 0, -gun.relief).sub(rearL.clone().applyQuaternion(qAds));
-  const hipRear = new THREE.Vector3(0.115, -0.125, -gun.relief * 0.8);
-  const qHip = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0, -HIP_CONVERGE).sub(hipRear).normalize()).multiply(qAds);
-  const pHip = hipRear.clone().sub(rearL.clone().applyQuaternion(qHip));
+  // ── weapon poses in camera space (x right, y up, −z ahead), from whichever sight is in use (irons or the optic) ──
+  const P = { rear: gun.sight.rear, front: gun.sight.front, optic: false, zoom: [1, 1] as [number, number], qAds: new THREE.Quaternion(), pAds: new THREE.Vector3(), qHip: new THREE.Quaternion(), pHip: new THREE.Vector3() };
+  let poseKey = '';
+  function sightPoses() {
+    const o = gun.optic?.() ?? null, key = o ? 'optic' : 'irons';
+    if (key === poseKey) return P;
+    poseKey = key;
+    P.rear = o ? o.rear : gun.sight.rear; P.front = o ? o.front : gun.sight.front; P.optic = !!o; P.zoom = o ? o.zoom : [1, 1];
+    const relief = o ? o.relief : gun.relief;
+    const qLevel = new THREE.Quaternion().setFromUnitVectors(P.front.clone().sub(P.rear).normalize(), new THREE.Vector3(0, 0, 1));
+    P.qAds.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(qLevel);
+    P.pAds.set(0, 0, -relief).sub(P.rear.clone().applyQuaternion(P.qAds));
+    const hipRear = gun.hip?.clone() ?? new THREE.Vector3(0.115, -0.125, -gun.relief * 0.8);
+    P.qHip.setFromUnitVectors(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0, -HIP_CONVERGE).sub(hipRear).normalize()).multiply(P.qAds);
+    P.pHip.copy(hipRear).sub(P.rear.clone().applyQuaternion(P.qHip));
+    return P;
+  }
+  // ── the scope's picture: drawn straight in clip space over everything, centred where the optic's axis points ──
+  let power = 4, scoped = false;
+  const scopeMat = new THREE.ShaderMaterial({
+    uniforms: { uAspect: { value: 1 }, uC: { value: new THREE.Vector2() }, uR: { value: 0.47 }, uIllum: { value: 3 } },
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: `uniform float uAspect, uR, uIllum; uniform vec2 uC; varying vec2 vUv;
+      void main() {
+        vec2 p = (vUv - 0.5 - uC) * vec2(uAspect, 1.0);
+        float r = length(p), inside = smoothstep(uR, uR - 0.01, r);
+        float rim = smoothstep(uR * 0.7, uR, r) * 0.6;                               // the eyebox's dark edge
+        float px = fwidth(p.x) * 1.2;
+        float thick = (step(abs(p.y), 0.0055) * step(uR * 0.42, abs(p.x)) + step(abs(p.x), 0.0055) * step(uR * 0.42, -p.y));
+        float fine = (1.0 - smoothstep(0.0, px, abs(p.y))) * step(abs(p.x), uR * 0.42) * step(0.04, abs(p.x))
+                   + (1.0 - smoothstep(0.0, px, abs(p.x))) * step(-p.y, uR * 0.42) * step(0.04, -p.y);
+        float shoe = (1.0 - smoothstep(0.0012, 0.0012 + px, abs(r - 0.03))) * step(-0.016, p.y);   // horseshoe, open below
+        float dotc = 1.0 - smoothstep(0.0022, 0.0022 + px, r);
+        float black = clamp(thick + fine, 0.0, 1.0) * inside, red = clamp(shoe + dotc, 0.0, 1.0) * inside;
+        float a = max(max(1.0 - inside, rim * inside), max(black, red));
+        vec3 col = vec3(1.0, 0.03, 0.015) * uIllum * red;
+        gl_FragColor = vec4(col, a);
+      }`,
+    transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
+  });
+  scopeMat.userData.realStyle = true;
+  const scopeQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), scopeMat);
+  scopeQuad.frustumCulled = false; scopeQuad.renderOrder = 999; scopeQuad.visible = false; scopeQuad.raycast = () => {}; root.add(scopeQuad);
+  /** in the scope the rifle and hands are not drawn (they are behind the eyepiece): their meshes move to layer 1 */
+  function setScoped(v: boolean) {
+    if (v === scoped) return;
+    scoped = v; scopeQuad.visible = v;
+    gun.root.traverse(o => { if ((o as THREE.Mesh).isMesh) o.layers.set(v ? 1 : 0); });
+  }
+  const scopeFov = () => 2 * Math.atan(Math.tan(FOV_AIM / 2 * DEG) / power) / DEG;
+  let trigHeld = false;
 
   // entry: the eye walks from the orbit view to the line while the weapon comes up off the bench
-  let entryT0 = 0, entering = false;
+  let entryT0 = 0, entering = false, swapIn = false;
+  let leaving: { id: string; t0: number } | null = null;     // lowering this weapon before changing to another
   const from = { eye: new THREE.Vector3(), eyeQ: new THREE.Quaternion(), gun: new THREE.Vector3(), gunQ: new THREE.Quaternion() };
   const shadows: [THREE.Mesh, boolean, boolean][] = [];
 
@@ -130,13 +206,13 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     }
     return roomIn;
   }
-  function roomShot() {
+  function roomShot(loud: number) {
     const bus = roomBus(), c = snd.audio; if (!bus || !c) return;
     const t = c.currentTime, src = snd.noise(0.5), f = c.createBiquadFilter(), g = c.createGain();
     f.type = 'lowpass'; f.frequency.value = 3600;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.2, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.2 * loud, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
     src.connect(f).connect(g).connect(bus); src.start(t); src.stop(t + 0.4);
-    snd.tone(64, 0.42, 0.24, { type: 'sine', to: 32 });     // the hall's boom
+    snd.tone(64, 0.42, 0.24 * loud, { type: 'sine', to: 32 });     // the hall's boom
   }
   const att = (d: number) => 1 / (1 + d / 9);
   const beep = () => { snd.tone(3000, 0.32, 0.075, { type: 'square' }); snd.tone(3000, 0.32, 0.04, { type: 'sine' }); };
@@ -144,7 +220,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   // ── the target line ──
   const groundAt = (x: number, z: number) => {
     const i = Math.round((x - L.lane) / L.laneW), cx = L.lane + i * L.laneW, hw = (L.bench.x1 - L.bench.x0) / 2;
-    const z0 = i === 0 ? L.bench.z0 : L.line - 0.62;
+    const z0 = L.bench.z0;
     return Math.abs(i) <= 2 && Math.abs(x - cx) < hw && z > z0 && z < L.line ? 0 : L.floor;
   };
   function popOne(kind: 'hostile' | 'ns', until: number) {
@@ -188,14 +264,15 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     if (reload) return;
     const r = gun.trigger();
     if (r !== 'busy') pullAt = sec;
+    if (r !== 'shot' && r !== 'busy') trigHeld = false;          // an empty or safe weapon stops an automatic burst
     if (r === 'shot') shot();
-    else if (r === 'safe') call('Safety on · X');
-    else if (r === 'locked') call('Slide locked · R');
+    else if (r === 'safe') call(gun.state().mode ? 'Safe · X selector' : 'Safety on · X');
+    else if (r === 'locked') call(gun.kind === 'rifle' ? 'Bolt locked · R' : 'Slide locked · R');
     else if (r === 'click') call(gun.state().rounds > 0 && gun.state().magIn ? 'Rack it · R' : 'Empty · R');
   }
   function shot() {
     gun.root.updateMatrixWorld(true);
-    const rw = gun.root.localToWorld(tmpA.copy(rearL)), fw = gun.root.localToWorld(tmpB.copy(frontL)), mw = gun.root.localToWorld(tmpC.copy(gun.muzzle));
+    const S = sightPoses(), rw = gun.root.localToWorld(tmpA.copy(S.rear)), fw = gun.root.localToWorld(tmpB.copy(S.front)), mw = gun.root.localToWorld(tmpC.copy(gun.muzzle));
     const sd = fw.sub(rw).normalize();
     const dir = rw.addScaledVector(sd, ZERO).sub(mw).normalize();
     // mechanical spread (about 2 MOA), more from the hip and on the move
@@ -225,8 +302,8 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     // recoil: the muzzle flips and the gun drives back into the hands; the eye follows a little and recovers most of it
     const r = 0.85 + Math.random() * 0.3, hip = 1 + (1 - aimK) * 0.35;
     kick.vRise += gun.recoil.rise * 30 * r * hip; kick.vPush += gun.recoil.push * 30 * r;
-    kick.cam += 0.85 * DEG * r * hip; me.yaw += (Math.random() - 0.5) * 0.3 * DEG; me.pitch += 0.12 * DEG * r;
-    roomShot();
+    kick.cam += (gun.recoil.cam ?? 0.85 * DEG) * r * hip; me.yaw += (Math.random() - 0.5) * 0.3 * DEG; me.pitch += 0.12 * DEG * r;
+    roomShot(gun.loud?.() ?? 1);
     // a wisp of powder smoke from the muzzle
     for (let i = 0; i < 3; i++) fx.smoke.emit(mw.clone().addScaledVector(dir, 0.02 + i * 0.03), { v: dir.clone().multiplyScalar(0.6 + i * 0.3).add(new THREE.Vector3(0, 0.1, 0)), s0: 0.03, s1: 0.3, life: 1.5 + Math.random(), c: [0.72, 0.72, 0.7], a: 0.22, drag: 2.4, rise: 0.22 });
   }
@@ -287,8 +364,8 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   }
   const gp = new THREE.Vector3(), gq = new THREE.Quaternion(), dq = new THREE.Quaternion(), de = new THREE.Euler(0, 0, 0, 'YXZ'), pivot = new THREE.Vector3();
   function handPose(cam: THREE.Camera) {
-    const k = smooth(aimK);
-    gp.lerpVectors(pHip, pAds, k); gq.slerpQuaternions(qHip, qAds, k);
+    const k = smooth(aimK), S = sightPoses();
+    gp.lerpVectors(S.pHip, S.pAds, k); gq.slerpQuaternions(S.qHip, S.qAds, k);
     // the hold's wobble and breathing, the recoil flip and the reload tilt, all about the grip
     const steady = holding ? 0.2 : 1, sp = Math.min(1, me.vel.length() / 2);
     const A = 0.0021 * (k > 0.5 ? 1 : 1.8) * steady * (gasp > 0 ? 2.4 : 1) * (1 + sp * 2.5) * (1 - me.kneel * 0.35);
@@ -305,25 +382,59 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     gun.root.quaternion.copy(cam.quaternion).multiply(gq);
   }
 
+  /** the weapon dropped below the view and tipped down, k = 0 (in the hands) … 1 (out of sight) */
+  function lower(cam: THREE.Camera, k: number) {
+    const e = smooth(clamp(k, 0, 1));
+    gun.root.position.add(tmpA.set(0.05 * e, -0.34 * e, 0.08 * e).applyQuaternion(cam.quaternion));
+    gun.root.quaternion.premultiply(dq.setFromAxisAngle(tmpB.set(1, 0, 0).applyQuaternion(cam.quaternion), -0.9 * e));
+  }
+  /** lower this weapon and change to another (on the line, not mid-entry) */
+  function swapTo(id: string | undefined) {
+    if (!nav || !id || id === nav.id || leaving || entering) return;
+    leaving = { id, t0: sec }; aimHeld = aimToggle = trigHeld = false; reload = null;
+    snd.click(0, 0.45);
+  }
+
   const eyeSpec: EyeSpec = {
     fov: FOV, near: 0.02, far: 120,
     pose(pos, quat) {
       shooterEye(eyePos, eyeQ);
-      if (entering) {
+      if (entering && !swapIn) {
         const k = smooth(clamp((sec - entryT0) / 1.1, 0, 1));
         pos.lerpVectors(from.eye, eyePos, k); quat.slerpQuaternions(from.eyeQ, eyeQ, k);
       } else { pos.copy(eyePos); quat.copy(eyeQ); }
     },
     frame(cam) {
-      const f = THREE.MathUtils.lerp(FOV, aimFov, smooth(aimK));
+      const S = sightPoses();
+      setScoped(S.optic && aimK > 0.93 && !entering);
+      const f = scoped ? scopeFov() : THREE.MathUtils.lerp(FOV, S.optic ? FOV_AIM : aimFov, smooth(aimK));
       if (Math.abs(cam.fov - f) > 0.01) { cam.fov = f; cam.updateProjectionMatrix(); }
       handPose(cam);
+      if (scoped) {                                    // the picture rides on where the optic's axis points
+        gun.root.updateMatrixWorld(true);
+        const a = gun.root.localToWorld(tmpA.copy(S.rear)), b = gun.root.localToWorld(tmpB.copy(S.front));
+        const far = b.sub(a).normalize().multiplyScalar(60).add(a).project(cam);
+        scopeMat.uniforms.uC.value.set(far.x * 0.5, far.y * 0.5);
+        scopeMat.uniforms.uAspect.value = cam.aspect;
+        scopeMat.uniforms.uIllum.value = low() ? 1.1 : 1.9;
+      }
       const pt = sec - pullAt; hands.pull(pullAt < 0 ? 0 : pt < 0.035 ? pt / 0.035 : Math.max(0, 1 - (pt - 0.05) / 0.12));
-      if (entering) {
+      // a pistol is carried out in the firing hand; the support hand comes up and wraps it as it is aimed
+      if (gun.kind !== 'rifle') {
+        const away = 1 - smooth(clamp(aimK / 0.6, 0, 1));
+        hands.support.position.set(0.05, -0.2, -0.24).multiplyScalar(away);
+        hands.support.rotation.set(-0.7 * away, 0, 0.3 * away);
+        hands.support.visible = away < 0.98;
+      }
+      // (visibility is set every frame: a long frame can end the entry before the frame that would have shown them)
+      hands.group.visible = true;
+      if (entering && swapIn) lower(cam, 1 - (sec - entryT0) / 0.45);
+      else if (entering) {
         const k = smooth(clamp((sec - entryT0 - 0.25) / 0.9, 0, 1));
         gun.root.position.lerpVectors(from.gun, gun.root.position, k); gun.root.quaternion.slerpQuaternions(from.gunQ, gun.root.quaternion, k);
         hands.group.visible = k > 0.7;
       }
+      if (leaving) lower(cam, (sec - leaving.t0) / 0.3);
       gun.root.updateMatrixWorld(true);
     },
     exit() { exit(true); },
@@ -334,15 +445,19 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
         me.yaw -= dx * k; me.pitch = clamp(me.pitch - dy * k, -1.35, 1.35);
       },
       button(b, down) {
-        if (b === 0 && down) fire();
+        if (b === 0) { trigHeld = down; if (down) fire(); }
         if (b !== 2) return;
         const t = performance.now() / 1000;
         if (down) { rmbAt = t; rmbWas = aimToggle; aimHeld = true; return; }
         aimHeld = false;
         aimToggle = t - rmbAt < 0.3 ? !rmbWas : false;        // a tap flips the aim; letting go of a hold ends it
       },
-      wheel(dy) { if (aimK > 0.5) aimFov = clamp(aimFov * Math.exp(dy * 0.0011), 30, 58); },
-      locked(v, no) { captured = v; if (no) refused = true; if (!v) { keys.clear(); aimHeld = false; } },
+      wheel(dy) {
+        if (aimK <= 0.5) return;
+        if (sightPoses().optic) power = clamp(power * Math.exp(-dy * 0.0012), P.zoom[0], P.zoom[1]);   // the optic's power ring
+        else aimFov = clamp(aimFov * Math.exp(dy * 0.0011), 30, 58);
+      },
+      locked(v, no) { captured = v; if (no) refused = true; if (!v) { keys.clear(); aimHeld = false; trigHeld = false; } },
     },
   };
 
@@ -361,7 +476,12 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     sec = now / 1000;
     if (!on) return;
     for (let i = timers.length - 1; i >= 0; i--) if (sec >= timers[i][0]) { const f = timers[i][1]; timers.splice(i, 1); f(); }
-    if (entering && sec - entryT0 > 1.35) entering = false;
+    if (entering && sec - entryT0 > (swapIn ? 0.55 : 1.35)) entering = false;
+    if (leaving && sec - leaving.t0 > 0.3) {                   // lowered: hand over to the next weapon
+      const id = leaving.id; leaving = null;
+      carry = { from: nav!.id, to: id, at: performance.now(), x: me.pos.x - L.lane, z: me.pos.z - L.bench.z0, yaw: me.yaw, pitch: me.pitch, kneel: me.kneelOn };
+      lastWeapon = nav!.id; nav!.open(id);
+    }
 
     // walking and kneeling
     fwd.set(Math.sin(me.yaw), 0, Math.cos(me.yaw)); right.set(-Math.cos(me.yaw), 0, Math.sin(me.yaw));
@@ -392,6 +512,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     }
     kick.cam *= Math.exp(-dt * 7.5);
     stepReload();
+    if (trigHeld && gun.auto?.() && !reload && !entering) fire();   // automatic: the next round as soon as the action is back
 
     // the drill
     T.tick(sec);
@@ -418,28 +539,26 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
 
     // lights: the house lights (or not), the status light over the backstop
     const lo = low(), hot = phase === 'live' || phase === 'standby';
-    hall.lamps.house.emissiveIntensity = lo ? 0.25 : 4.5;
-    hall.lamps.flood.emissiveIntensity = lo ? 1.2 : 8;
-    hall.lamps.exit.emissiveIntensity = 3.2;
-    hall.lamps.hot.emissiveIntensity = hot ? 7 : 0.25;
-    hall.lamps.cold.emissiveIntensity = hot ? 0.25 : 5;
+    hall.lamps.house.emissiveIntensity = lo ? 0.25 : 2.4;
+    hall.lamps.flood.emissiveIntensity = lo ? 1.2 : 3.2;
+    hall.lamps.exit.emissiveIntensity = 2.2;
+    hall.lamps.hot.emissiveIntensity = hot ? 3.6 : 0.25;
+    hall.lamps.cold.emissiveIntensity = hot ? 0.25 : 3;
     fx.update(dt, wind);
   }
   const wind = new THREE.Vector3(0, 0.02, 0.06);              // the range's ventilation draws smoke downrange
 
   // ── in and out ──
   let on = false;
-  function warm() {
-    const r = E.renderer, prev = r.getRenderTarget(); r.setRenderTarget(E.composer.readBuffer);
-    try { r.compileAsync(E.scene, E.camera).catch(() => {}); } catch { /* compiles on first draw instead */ }
-    r.setRenderTarget(prev);
-  }
   function enter() {
-    if (on) return;
-    on = true; phase = 'setup'; entering = true; entryT0 = sec = performance.now() / 1000;
+    if (on || dead) return;
+    if (!ready) { wantIn = true; return; }                     // goes on as soon as the range has compiled
+    const c = carry && carry.to === nav?.id && performance.now() - carry.at < 15000 ? carry : null; carry = null;
+    on = true; phase = 'setup'; entering = true; swapIn = !!c; leaving = null; entryT0 = sec = performance.now() / 1000;
     from.eye.copy(E.orbitCamera.position); from.eyeQ.copy(E.orbitCamera.quaternion);
     from.gun.copy(gun.root.position); from.gunQ.copy(gun.root.quaternion);
     me.pos.set(L.lane, 0, L.bench.z0 - 0.24); me.yaw = 0; me.pitch = -0.05; me.vel.set(0, 0, 0); me.kneel = 0; me.kneelOn = false;
+    if (c) { me.pos.set(L.lane + c.x, 0, L.bench.z0 + c.z); clampPos(me.pos, me.pos.z); me.yaw = c.yaw; me.pitch = c.pitch; me.kneelOn = c.kneel; me.kneel = c.kneel ? 1 : 0; }
     aimK = 0; aimToggle = aimHeld = false; breath = 1; gasp = 0; Object.assign(kick, { rise: 0, vRise: 0, push: 0, vPush: 0, cam: 0 });
     shots = []; shotN = 0; result = null; lastShot = sec; called = { seq: called.seq + 1, text: 'Load and make ready' };
     root.visible = true; T.reset();
@@ -448,22 +567,24 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     gun.root.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { shadows.push([m, m.castShadow, m.receiveShadow]); m.receiveShadow = false; } });
     hands.group.visible = false;
     E.setEye(eyeSpec);
-    warm();
+    void E.warm();                                             // anything not compiled yet (frames hold meanwhile)
     if (low() && !gun.state().night) gun.night();
     startReload(true);
   }
   function exit(byEngine = false) {
+    wantIn = false;
     if (!on) return;
     on = false;
-    if (!byEngine) E.setEye(null);
+    if (!byEngine && carry?.from !== nav?.id) E.setEye(null);   // (handing over: the pointer stays captured)
     root.visible = false; hands.group.visible = false;
     for (const [m, c, r] of shadows) { m.castShadow = c; m.receiveShadow = r; }
-    reload = null; timers.length = 0; keys.clear(); aimHeld = aimToggle = false;
+    reload = null; leaving = null; timers.length = 0; keys.clear(); aimHeld = aimToggle = trigHeld = false;
+    setScoped(false); poseKey = '';
     gun.hold(false);
     T.reset(); fx.clear(); holes.clear(); phase = 'setup';
   }
 
-  const SKIP = new Set(['e', 'p', 'd', 'w', 'a', 's', 'f', 'r', 'z', 'x', 'c']);
+  const SKIP = new Set(['e', 'p', 'd', 'w', 'a', 's', 'f', 'r', 'z', 'x', 'c', 'q']);
   return {
     get on() { return on; },
     enter, exit, tick,
@@ -472,18 +593,20 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
       if (!on) return false;
       if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Shift'].includes(k)) { keys.add(k); return true; }
       if (e.repeat) return SKIP.has(k) || k === 'space';
-      if (k === 'f') fire();
+      if (k === 'f') { trigHeld = true; fire(); }
       else if (k === 'r' || k === 'e') startReload();
       else if (k === 'z') aimToggle = !aimToggle;
-      else if (k === 'x') { gun.safety(); call(gun.state().safe ? 'Safe' : 'Fire'); }
+      else if (k === 'x') { gun.safety(); const m = gun.state().mode; call(m ? m[0].toUpperCase() + m.slice(1) : gun.state().safe ? 'Safe' : 'Fire'); }
       else if (k === 'c') me.kneelOn = !me.kneelOn;
+      else if (/^[1-9]$/.test(k)) swapTo(WEAPONS[+k - 1]?.id);
+      else if (k === 'q') swapTo(lastWeapon && lastWeapon !== nav?.id ? lastWeapon : WEAPONS[(WEAPONS.findIndex(w => w.id === nav?.id) + 1) % WEAPONS.length]?.id);
       else if (k === 'space' || k === 'Enter') { if (phase === 'free' || phase === 'done') startDrill(); else if (phase === 'live' || phase === 'standby') endDrill(); }
       else if (k === 'Escape') exit();
       else return SKIP.has(k);
       return true;
     },
-    keyUp(k: string) { keys.delete(k); },
-    blur() { keys.clear(); aimHeld = false; },
+    keyUp(k: string) { keys.delete(k); if (k === 'f') trigHeld = false; },
+    blur() { keys.clear(); aimHeld = false; trigHeld = false; },
     /** the stage lights the hall from this while the range is on */
     stage(): StageOverride | null { return on ? (low() ? LOW : BRIGHT) : null; },
     hud(): RangeHud | null {
@@ -494,13 +617,17 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
         time: phase === 'live' ? Math.max(0, Math.ceil((DRILL - (sec - liveAt)) * 10) / 10) : DRILL, par: DRILL,
         score: stats.score, shots: stats.shots, hits: stats.hits, presented: stats.presented, noShoot: stats.noShoot,
         rounds: s.rounds, cap: s.cap, chamber: s.chamber, magIn: s.magIn, safe: s.safe, slideLocked: s.locked, reloading: !!reload,
-        aiming: aimK > 0.5, breath: holding || gasp > 0 || breath < 1 ? Math.round(breath * 20) / 20 : null,
+        aiming: aimK > 0.5, mode: s.mode ?? null, power: scoped ? Math.round(power * 10) / 10 : null, breath: holding || gasp > 0 || breath < 1 ? Math.round(breath * 20) / 20 : null,
         shotsList: shots.slice(-8), hit, call: called, result,
+        weapons: nav && WEAPONS.length > 1 ? WEAPONS.map((w, i) => ({ key: String(i + 1), name: w.name, on: w.id === nav.id })) : [],
       };
     },
+    /** waiting for the range to finish compiling before it goes on */
+    get pending() { return wantIn; },
     dispose() {
-      exit();
-      root.removeFromParent(); hall.dispose(); T.dispose(); hands.group.removeFromParent(); hands.dispose(); fx.dispose(); holes.dispose();
+      exit(); dead = true;
+      // the hall and targets stay built for the next weapon (kits); so do the hands' meshes (lib/range/hands.ts)
+      root.removeFromParent(); hands.dispose(); fx.dispose(); holes.dispose(); scopeMat.dispose(); scopeQuad.geometry.dispose();
     },
   };
 }

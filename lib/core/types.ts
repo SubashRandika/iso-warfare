@@ -24,6 +24,10 @@ export interface ModelCtx {
   has(action: string): boolean;
   /** switch the render style (true: the realistic view, loading it if needed); the model hears back through onStyle */
   style(real: boolean): void;
+  /** open another model in the viewer; arriving 'range', it goes straight onto the shooting range (a weapon change) */
+  open(id: string, arrive?: 'range'): void;
+  /** how this model was opened: 'range' when the weapon before it handed over on the range */
+  arrive?: 'range';
 }
 
 export interface ModelView {

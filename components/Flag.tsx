@@ -3,7 +3,7 @@
 import type { JSX } from 'react';
 import type { CountryId } from '@/lib/catalog/types';
 
-export const COUNTRY_NAMES: Record<CountryId, string> = { US: 'United States', RU: 'Russia', CN: 'China' };
+export const COUNTRY_NAMES: Record<CountryId, string> = { US: 'United States', RU: 'Russia', CN: 'China', SU: 'Soviet Union' };
 
 /** a five-pointed star centred at (cx, cy), outer radius r, one point toward angle a (radians, y down) */
 function star(cx: number, cy: number, r: number, a = -Math.PI / 2) {
@@ -49,7 +49,23 @@ function CN() {
   );
 }
 
-const FLAGS: Record<CountryId, () => JSX.Element> = { US, RU, CN };
+/** Soviet Union, 2:1: red, a gold hammer and sickle under a gold-bordered star in the upper hoist */
+function SU() {
+  return (
+    <svg viewBox="0 0 40 20">
+      <rect width="40" height="20" fill="#CC0000" />
+      <path d={star(7.5, 2.7, 1.55)} fill="none" stroke="#FFD700" strokeWidth="0.35" strokeLinejoin="round" />
+      <g fill="none" stroke="#FFD700" strokeLinecap="round">
+        <path d="M5.4 5.4 A3.1 3.1 0 1 0 9.8 9.4" strokeWidth="0.85" />
+        <path d="M6.6 9.2 L5.4 10.4" strokeWidth="0.85" />
+        <path d="M6.3 6.4 L9.6 9.7" strokeWidth="0.65" />
+        <path d="M5.2 7.3 L7.3 5.2" strokeWidth="1.15" strokeLinecap="butt" />
+      </g>
+    </svg>
+  );
+}
+
+const FLAGS: Record<CountryId, () => JSX.Element> = { US, RU, CN, SU };
 
 export function Flag({ country }: { country: CountryId }) {
   const F = FLAGS[country];

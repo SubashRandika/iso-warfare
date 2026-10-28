@@ -183,6 +183,9 @@ button { font: inherit; color: inherit; }
 .r-mark.z-S { color: var(--dim); }
 @keyframes r-mark { from { opacity: 1; transform: rotate(45deg) scale(0.7); } to { opacity: 0; transform: rotate(45deg) scale(1.2); } }
 .r-breath { position: absolute; left: 50%; top: calc(50% + 34px); width: 64px; height: 2px; margin-left: -32px; border-radius: 2px; background: linear-gradient(90deg, var(--accent) calc(var(--b) * 100%), var(--line) 0); }
+.r-power { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: baseline; gap: 6px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); font-variant-numeric: tabular-nums; }
+.r-power b { font-size: 15px; font-weight: 600; }
+.r-power span { color: var(--dim); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
 .r-call { position: absolute; left: 0; right: 0; top: 30%; text-align: center; font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: clamp(30px, 5vw, 56px); line-height: 1; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); animation: r-call 2s ease-out forwards; }
 @keyframes r-call { 0% { opacity: 0; transform: translateY(6px); } 10% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; } }
 /* bottom row and the shot string */
@@ -205,6 +208,14 @@ button { font: inherit; color: inherit; }
 .r-cells i { width: 5px; height: 13px; border-radius: 1px; background: var(--line); }
 .r-cells i.on { background: var(--ink); }
 .r-ammo.warn .r-k { color: var(--accent); }
+/* weapon slots over the magazine; the cover while the next weapon is brought up */
+.r-weapons { position: absolute; right: 16px; bottom: 124px; margin: 0; padding: 0; list-style: none; display: flex; gap: 6px; }
+.r-weapons li { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 5px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--dim); font-size: 11px; letter-spacing: 0.04em; }
+.r-weapons li.on { color: var(--ink); border-color: var(--accent); }
+.r-swap { position: fixed; inset: 0; z-index: 4; display: grid; place-content: center; justify-items: center; gap: 4px; background: #0b0c0d; color: #e6e6e1; font: 12px/1.4 var(--mono); animation: r-swap 0.18s ease-out; }
+.r-swap .r-k { color: #8a8d90; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+.r-swap b { font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: 44px; line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; }
+@keyframes r-swap { from { opacity: 0; } }
 /* cards: taking the line, the drill's result */
 .r-card { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px)); padding: 20px 22px 18px; text-align: center; }
 .r-card p { margin: 4px 0 0; color: var(--dim); }

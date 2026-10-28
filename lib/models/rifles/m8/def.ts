@@ -1,0 +1,41 @@
+import type { ModelDef } from '../../../catalog/types';
+
+export const m8: ModelDef = {
+  id: 'm8', category: 'rifles', name: 'M8 carbine', tab: 'M8', designation: 'M8',
+  role: 'Carbine (SIG MCX-SPEAR, the Army’s XM7) · US Army',
+  specs: [['Calibre', '6.8×51 mm'], ['Barrel', '330 mm'], ['Magazine', '20 rounds'], ['Weight', '3.8 kg']],
+  info: { country: 'US', manufacturer: 'SIG Sauer', role: 'Carbine (Next Generation Squad Weapon)', status: 'Fielding · US Army', first: 2022 },
+  parts: [
+    { id: 'upper', name: 'Upper receiver', click: 'works the charging handle', text: 'Machined aluminium with a coyote Cerakote finish and one continuous Picatinny rail along the top. It holds the bolt carrier, which shows through the ejection port on the right, and the barrel. The action is a short-stroke gas piston, so hot propellant gas stays out of the receiver.' },
+    { id: 'lower', name: 'Lower receiver', text: 'Holds the trigger group, the magazine well and the controls. The selector, magazine release and bolt catch can be worked from either side.' },
+    { id: 'handguard', name: 'Handguard', text: 'A free-floating handguard: it is fixed to the receiver and never touches the barrel, so a grip on it does not push the point of impact around. The slots are M-LOK mounting points for lights, lasers and grips. The cut-outs save weight and let heat out.' },
+    { id: 'barrel', name: 'Barrel', text: 'A 330 mm (13 in) barrel for the 6.8×51 mm round, which runs at much higher chamber pressure than 7.62 mm NATO for more velocity from a short barrel. The gas block and piston tube show through the handguard cut-outs.' },
+    { id: 'suppressor', name: 'Suppressor', click: 'takes the suppressor off or puts it on', text: 'Locks onto the muzzle brake. It slows and cools the propellant gas, so the report is much quieter and the flash much smaller. It does not make the rifle silent: the supersonic bullet still cracks downrange.' },
+    { id: 'optic', name: 'Optic', click: 'takes the optic off or fits it', text: 'A low-power variable scope (1–6×) on a cantilever mount, with an illuminated reticle. At 1× it can be used with both eyes open at close range; turned up, it is for targets far away. With it off, folding iron sights stand up on the rail.' },
+    { id: 'sights', name: 'Iron sights', text: 'Folding backup sights: a rear aperture and a front post. They lie flat under the optic and stand up when it comes off.' },
+    { id: 'stock', name: 'Stock', click: 'folds or unfolds the stock', text: 'Telescoping and folding: it folds to the left side for carrying in vehicles and aircraft. Because the action needs no buffer tube behind it, the rifle still fires with the stock folded.' },
+    { id: 'grip', name: 'Pistol grip', text: 'Polymer, with textured side panels. The angle sets how the wrist lines up behind the trigger.' },
+    { id: 'magazine', name: 'Magazine', click: 'drops or loads the magazine', text: 'A 20-round polymer magazine for the 6.8×51 mm cartridge. Here an emptied magazine drops onto the mat, and loading it again refills it.' },
+    { id: 'charging', name: 'Charging handle', click: 'works the charging handle', text: 'A side charging handle on the left of the receiver, so the firing hand can stay on the grip while the support hand charges it. It does not move when the rifle fires.' },
+    { id: 'selector', name: 'Selector', click: 'moves to the next setting: safe, semi, auto', text: 'Ambidextrous: safe, semi-automatic (one shot per trigger pull) or fully automatic (fires while the trigger is held).' },
+    { id: 'trigger', name: 'Trigger', click: 'fires (selector off safe, round chambered)', text: 'Pulling it releases the hammer. On auto the rifle keeps firing for as long as it is held, and the magazine empties in under two seconds.' },
+    { id: 'boltCatch', name: 'Bolt catch', click: 'releases a locked-back bolt', text: 'After the last round the empty magazine’s follower pushes this lever up and it holds the bolt open, a visible sign the rifle is empty. Press it after loading a fresh magazine to send the bolt home and chamber a round.' },
+  ],
+  actions: [
+    { id: 'demo', label: 'Demo', key: 'D' },
+    { id: 'fire', label: 'Fire', key: 'F' },
+    { id: 'rack', label: 'Charging handle', key: 'R' },
+    { id: 'magazine', label: 'Magazine', key: 'E' },
+    { id: 'selector', label: 'Selector', key: 'S' },
+    { id: 'stock', label: 'Fold stock', key: 'K' },
+    { id: 'optic', label: 'Optic', key: 'O' },
+    { id: 'suppressor', label: 'Suppressor', key: 'U' },
+    { id: 'range', label: 'Shooting range', key: 'G' },
+  ],
+  partActions: {
+    upper: 'rack', charging: 'rack', boltCatch: 'release', trigger: 'fire', selector: 'selector', magazine: 'magazine',
+    stock: 'stock', optic: 'optic', sights: 'optic', suppressor: 'suppressor',
+  },
+  hint: 'G range (real) · F fire · R charging handle · E magazine · S selector · K stock · O optic · U suppressor · I iso',
+  load: () => import('./model'),
+};

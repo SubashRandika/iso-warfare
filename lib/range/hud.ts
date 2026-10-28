@@ -34,6 +34,10 @@ export interface RangeHud {
   score: number; shots: number; hits: number; presented: number; noShoot: number;
   rounds: number; cap: number; chamber: boolean; magIn: boolean; safe: boolean; slideLocked: boolean; reloading: boolean;
   aiming: boolean;
+  /** the selector's setting ('safe', 'semi', 'auto') for weapons that have one */
+  mode: string | null;
+  /** the optic's magnification while looking through it */
+  power: number | null;
   /** breath held: 1 full, 0 out of breath; null when breathing normally */
   breath: number | null;
   shotsList: ShotRecord[];
@@ -42,4 +46,6 @@ export interface RangeHud {
   /** the range officer's last command and when it changed */
   call: { seq: number; text: string };
   result: RangeResult | null;
+  /** the weapons that can be changed to on the range (key, name, the one in the hands) */
+  weapons: { key: string; name: string; on: boolean }[];
 }

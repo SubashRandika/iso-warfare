@@ -30,7 +30,10 @@ export interface PuffSpec {
 const F = 22;   // floats per particle: p3 v3 age life s0 s1 a rot spin c0(3) c1(3) drag rise tile
 
 /** four soft, lumpy puffs in a 2×2 atlas: alpha is density, red is a detail value for the shading */
-function puffTexture() {
+/** shared for the session: every particle system draws the same puffs */
+let puff: THREE.CanvasTexture | null = null;
+const puffTexture = () => puff ??= Object.assign(drawPuffs(), { userData: { shared: true } });
+function drawPuffs() {
   const N = 128, W = N * 2, img = new ImageData(W, W);
   let seed = 7;
   const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -176,7 +179,7 @@ export function createParticles(E: Engine, maxSmoke = 7000, maxFire = 2500) {
       (U.uAmb.value as THREE.Color).copy(fog ? fog.color : new THREE.Color(0.6, 0.62, 0.66)).multiplyScalar(0.85);
     },
     clear() { smoke.clear(); fire.clear(); },
-    dispose() { smoke.dispose(); fire.dispose(); map.dispose(); },
+    dispose() { smoke.dispose(); fire.dispose(); },
   };
 }
 export type Particles = ReturnType<typeof createParticles>;

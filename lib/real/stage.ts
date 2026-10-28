@@ -86,6 +86,8 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
   const pmrem = new THREE.PMREMGenerator(E.renderer);
   const envScene = new THREE.Scene(), envSky = new Sky(); envSky.scale.setScalar(50); envScene.add(envSky);
   let envRT: THREE.WebGLRenderTarget | null = null, envKey = '', roomRT: THREE.WebGLRenderTarget | null = null;
+  const roomEnv = () => { if (!roomRT) { const room = new RoomEnvironment(); roomRT = pmrem.fromScene(room, 0.04); room.dispose(); } return roomRT; };
+  if (spec.stage) roomEnv();                         // made with the rest of the view, not as the indoor set comes on
   const bloom = new UnrealBloomPass(new THREE.Vector2(E.renderer.domElement.width, E.renderer.domElement.height), 0.3, 0.45, 3.0);
   bloom.enabled = false; E.addPreOutputPass(bloom);
   // a soft ramp over the threshold, and a cap on what feeds the glow: a sun disc in frame is thousands of times brighter
@@ -104,10 +106,9 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
   }
   /** an indoor set: a lit room's reflections, no sky, the sun overhead as the house lights */
   function applyIndoor(o: StageOverride) {
-    if (!roomRT) { const room = new RoomEnvironment(); roomRT = pmrem.fromScene(room, 0.04); room.dispose(); }
     const s = E.scene;
     sky.visible = o.sky;
-    s.environment = o.env === 'room' ? roomRT.texture : envRT?.texture ?? null; s.environmentIntensity = o.envI;
+    s.environment = o.env === 'room' ? roomEnv().texture : envRT?.texture ?? null; s.environmentIntensity = o.envI;
     s.fog = o.fog ? new THREE.FogExp2(o.fog.color, o.fog.density) : null;
     E.renderer.toneMapping = THREE.ACESFilmicToneMapping; E.renderer.toneMappingExposure = o.exposure;
     E.lights.hemi.intensity = 0; E.lights.ambient.intensity = 0; E.lights.fill.intensity = 0;
@@ -210,7 +211,10 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
     for (const o of spec.only?.real ?? []) o.visible = v;
     for (const o of spec.hide ?? []) { if (v) glowWas.set(o, o.visible); o.visible = v ? false : glowWas.get(o) ?? true; }
     bloom.enabled = v;
-    if (v) { E.renderer.shadowMap.enabled = true; E.renderer.shadowMap.type = THREE.PCFShadowMap; applyTime(); }
+    if (v) {
+      E.renderer.shadowMap.enabled = true; E.renderer.shadowMap.type = THREE.PCFShadowMap; applyTime();
+      void E.warm();                              // compile the swapped-in materials off the main thread first
+    }
     else {
       for (const h of hairs) h.visible = true;
       sun.castShadow = false;
@@ -242,7 +246,7 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
     dispose() {
       if (on) set(false);
       for (const h of hairs) h.visible = true;
-      [tex, conc.map, conc.roughnessMap, conc.bumpMap].forEach(t => t.dispose());
+      // the skin and concrete textures are shared for the session (lib/real/textures.ts)
       bench?.dispose();
       Object.values(M).forEach(m => m.dispose());
       lampMats.forEach(([, r]) => r.dispose());

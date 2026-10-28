@@ -26,6 +26,10 @@ export default function Viewer() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [failed, setFailed] = useState(false);
   const [armory, setArmory] = useState(false);
+  // a weapon change on the range: the next weapon opens straight onto the range, behind a short cover meanwhile
+  const [swap, setSwap] = useState<string | null>(null);
+  const arrive = useRef<'range' | undefined>(undefined);
+  const openRef = useRef<(next: string, how?: 'range') => void>(() => {});
 
   useEffect(() => { setId(readModel()); }, []);
 
@@ -37,19 +41,25 @@ export default function Viewer() {
     const def = getModel(id);
     Promise.all([import('@/lib/core/host'), def.load()]).then(([{ createViewer }, mod]) => {
       if (disposed || !host.current) return;
-      inst = createViewer(host.current, def, mod.default, setSnap);
+      inst = createViewer(host.current, def, mod.default, setSnap, { open: (n, how) => openRef.current(n, how), arrive: arrive.current });
+      arrive.current = undefined;
       api.current = inst;
     }).catch(err => { console.error(err); if (!disposed) setFailed(true); });
     return () => { disposed = true; inst?.dispose(); api.current = null; };
   }, [id]);
 
-  const open = useCallback((next: string) => {
+  const open = useCallback((next: string, how?: 'range') => {
     setArmory(false);
     if (next === id) return;
+    arrive.current = how; setSwap(how ? getModel(next).name : null);
     try { localStorage.setItem(MODEL_KEY, next); } catch { /* ignore */ }
     const u = new URL(location.href); u.searchParams.delete('jet'); u.searchParams.delete('demo'); u.searchParams.set('model', next); history.replaceState(null, '', u);
     setId(next);
   }, [id]);
+  useEffect(() => { openRef.current = open; }, [open]);
+  // the cover lifts once the range is back up (or after a while, if it never comes)
+  useEffect(() => { if (swap && snap?.hud && snap.model === id) setSwap(null); }, [swap, snap?.hud, snap?.model, id]);
+  useEffect(() => { if (!swap) return; const t = setTimeout(() => setSwap(null), 8000); return () => clearTimeout(t); }, [swap]);
   const closeArmory = useCallback(() => { setArmory(false); toggle.current?.focus(); }, []);
 
   const def = getModel(id);
@@ -82,16 +92,17 @@ export default function Viewer() {
     return { keys: t.slice(0, i), label: t.slice(i).join(' ') };
   });
   // a game overlay (the shooting range) replaces the viewer's panels while it shows
-  const range = snap?.hud ?? null;
+  const range = snap?.hud ?? null, ranging = !!range || !!swap;
   const status = failed ? [`${def.name} failed to load`, 'reload the page to retry'] : snap ? snap.readout.split(' · ') : ['loading'];
 
   return (
     <>
-      <div ref={host} className={range ? 'stage ranging' : 'stage'} role="img"
+      <div ref={host} className={ranging ? 'stage ranging' : 'stage'} role="img"
         aria-label={range ? `Shooting range, lane ${range.lane}. Click to take control; Escape leaves.` : `Interactive 3D ${def.name}. Drag to orbit, click parts to operate them.`} />
 
       {range && <RangeHud h={range} />}
-      {!range && <>
+      {swap && <div className="r-swap" role="status"><span className="r-k">Changing weapon</span><b>{swap}</b></div>}
+      {!ranging && <>
       <header className="ui top">
         <div className="lead">
           <div className="brand">

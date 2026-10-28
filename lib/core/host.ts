@@ -27,12 +27,15 @@ const load = (k: string) => { try { return localStorage.getItem('iso-warfare-' +
 /** one spelling for keys everywhere: letters lower-case, ' ' is 'space', named keys as the browser names them */
 export const normKey = (k: string) => k === ' ' ? 'space' : k.length === 1 ? k.toLowerCase() : k.toLowerCase() === 'space' ? 'space' : k;
 
-export function createViewer(host: HTMLElement, def: ModelDef, factory: ModelFactory, onChange: (s: Snapshot) => void) {
+/** how the page opens other models (a weapon change on the range), and how this one was opened */
+export interface ViewerNav { open(id: string, arrive?: 'range'): void; arrive?: 'range' }
+
+export function createViewer(host: HTMLElement, def: ModelDef, factory: ModelFactory, onChange: (s: Snapshot) => void, nav?: ViewerNav) {
   const theme0: Theme = (load('theme') as Theme) || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   let acc0: string | null = null; try { acc0 = localStorage.getItem('iso-accent'); } catch { /* ignore */ }
   const accent0 = (ACCENTS.some(a => a.id === acc0) ? acc0 : 'cyan') as AccentId;
 
-  const E = createEngine(host, { theme: theme0, accent: accent0, spin: load('spin') === '1' });
+  const E = createEngine(host, { theme: theme0, accent: accent0, spin: load('spin') === '1', keepLock: nav?.arrive === 'range' });
   const snd = new Sound(); snd.enabled = load('sound') !== '0';
   const script = createScript();
 
@@ -45,7 +48,7 @@ export function createViewer(host: HTMLElement, def: ModelDef, factory: ModelFac
     return Math.sin(t * Math.PI * 2 * 1.25) * (1 - t / 1.6);
   };
   const listed = new Set(def.actions.map(a => a.id));
-  const ctx: ModelCtx = { E, snd, def, script, say, wig, has: a => listed.has(a), style: on => { void setReal(on); } };
+  const ctx: ModelCtx = { E, snd, def, script, say, wig, has: a => listed.has(a), style: on => { void setReal(on); }, open: (id, arrive) => nav?.open(id, arrive), arrive: nav?.arrive };
   const M = factory(ctx);
   E.setPickRoot(M.pickRoot);
   const passive = new Set(['demo', ...(M.passive ?? [])]);
@@ -160,7 +163,8 @@ export function createViewer(host: HTMLElement, def: ModelDef, factory: ModelFac
   E.start();
   syncAccentVar();
   if (new URLSearchParams(location.search).has('demo') && M.actions.demo) run('demo');
-  if (M.real && load('style') === 'real') void setReal(true);
+  // straight into the realistic view: frames wait for it rather than draw (and compile) the hairline look for a moment
+  if (M.real && load('style') === 'real') void E.hold(setReal(true), 6000);
   emit(true);
 
   return {

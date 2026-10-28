@@ -145,7 +145,7 @@ function realMaterials() {
   };
 }
 
-const model: ModelFactory = ({ E, snd, script, say, style }) => {
+const model: ModelFactory = ({ E, snd, script, say, style, def, open, arrive }) => {
   const K = makeKit(E, { unit: 0.02 });
   const { add, part, hinge, box, well, lines } = K;
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -360,6 +360,8 @@ const model: ModelFactory = ({ E, snd, script, say, style }) => {
     sight: { rear: V(0, 0.1335, 0.0139), front: V(0, 0.13205, 0.1885) },
     muzzle: V(0, BY, 0.2), relief: 0.52,
     grip: { web: V(0, 0.0655, 0.0072), down: MAG_DIR.clone(), length: 0.062, depth: 0.05, half: GW, trigger: V(0, 0.0718, 0.0802), thumbY: 0.091, frameHalf: FW },
+    // carried out in the firing hand, low and right, the forearm running back to the corner of the view
+    hip: V(0.15, -0.112, -0.35),
     recoil: { rise: 7 * DEG, push: 0.018 },
     trigger() {
       if (busy() || st.stripped) return 'busy';
@@ -390,7 +392,7 @@ const model: ModelFactory = ({ E, snd, script, say, style }) => {
     loadingRange = true;
     import('../../../range/range').then(({ createRange }) => {
       loadingRange = false;
-      rng ??= createRange(E, snd, rangeGun, MAT);
+      rng ??= createRange(E, snd, rangeGun, MAT, { id: def.id, open: id => open(id, 'range') });
       if (wantRange && realOn) rng.enter();
       wantRange = false;
     }).catch(err => { loadingRange = false; wantRange = false; console.error(err); say('the range failed to load'); });
@@ -580,12 +582,15 @@ const model: ModelFactory = ({ E, snd, script, say, style }) => {
     stage: () => rng?.stage() ?? null,
     onStyle(on) {
       realOn = on;
+      if (on && !rng) openRange();                     // build the range now, so taking the line is instant
       if (!on) { wantRange = false; rng?.exit(); }
       for (const b of brass) { b.line.visible = !on; b.real.visible = on; }
       if (!on) { fireball.set(0, 0); flashLight.color.copy(E.accent); }
     },
     tick(now) { fireball.set(flashK(now), now); flashLight.color.setHex(0xffa24a); },
   };
+
+  if (arrive === 'range') setTimeout(() => act.range(), 0);   // changed to on the range: straight onto the line
 
   return {
     pickRoot: gun, parts: K.parts, real,

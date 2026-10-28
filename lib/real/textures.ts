@@ -31,7 +31,19 @@ function tileNoise(n: number, cells: number, r: Rng, octaves = 4) {
 
 const canvas = (n: number) => { const c = document.createElement('canvas'); c.width = c.height = n; return { c, x: c.getContext('2d', { willReadFrequently: true })! }; };
 
-export function skinTexture(n = 2048, seed = 22) {
+// Generated once per session and shared: drawing them takes a few hundred milliseconds, and switching models (or
+// coming back to one) would otherwise draw them again. Nobody disposes them.
+const made = new Map<string, unknown>();
+/** mark textures (one, or the textures in an object) as shared for the session: engines don't dispose them */
+export function share<T>(x: T): T {
+  for (const t of x instanceof THREE.Texture ? [x] : Object.values(x as object)) if (t instanceof THREE.Texture) t.userData.shared = true;
+  return x;
+}
+const once = <T>(key: string, make: () => T): T => { if (!made.has(key)) made.set(key, share(make())); return made.get(key) as T; };
+export const skinTexture = (n = 2048, seed = 22) => once(`skin:${n}:${seed}`, () => drawSkin(n, seed));
+export const concreteTextures = (n = 2048, seed = 7) => once(`concrete:${n}:${seed}`, () => drawConcrete(n, seed));
+
+function drawSkin(n: number, seed: number) {
   const r = rng(seed);
   // ── panel layout: recursive splits of the tile, so every seam meets another seam like a real skin ──
   type Box = { x: number; y: number; w: number; h: number };
@@ -101,7 +113,7 @@ export function skinTexture(n = 2048, seed = 22) {
   return tex;
 }
 
-export function concreteTextures(n = 2048, seed = 7) {
+function drawConcrete(n: number, seed: number) {
   const r = rng(seed);
   // low-frequency mottling at 256 px, smoothed up to full size by the canvas (fast); speckle per pixel from the rng
   const m = 256, low = tileNoise(m, 8, r, 5), lc = canvas(m), ld = lc.x.createImageData(m, m);

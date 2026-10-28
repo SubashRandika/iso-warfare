@@ -42,13 +42,21 @@ model is its own chunk; three.js loads with the first model.
    `components/Flag.tsx`), every part with a factual `text` (and `click` if clicking does something),
    actions with single-letter keys, `partActions` mapping parts to actions (or `wiggle:<id>`).
 3. Build the geometry in `model.ts`. References: `lib/models/pistols/m17/model.ts` (small, self-contained, raised over
-   its mat: extruded side profiles, slide cycle, magazine drop, thrown brass) and `lib/models/fighters/` (large lofted airframes,
+   its mat: extruded side profiles, slide cycle, magazine drop, thrown brass), `lib/models/rifles/m8/model.ts` (a rifle:
+   profiles traced from a photo that is not square-scaled, a handguard of flat panels with real M-LOK cut-outs so the
+   barrel shows through, an ejection port cut right through the receiver with the bolt carrier moving inside, a lathe-turned
+   scope, folding stock, removable suppressor, selector with automatic fire), `lib/models/rifles/ak47/model.ts` (profiles
+   written in the photo's own pixels and converted by `px`, an open stamped receiver of two walls and a floor so the
+   carrier lifts out of a real channel, a carrier carrying its gas piston and reciprocating handle, a magazine that rocks
+   about its front lug, a field strip that lays the parts beside the rifle, laminated-wood grain drawn on a canvas, matt
+   sights so they don't mirror the range's lights) and `lib/models/fighters/` (large lofted airframes,
    hinged surfaces, gear, bays). Several models of one kind share a sim the way the fighters share `jet/sim.ts`.
 4. Check: `npx tsc --noEmit`, `npx next build`, then open `/?model=<id>` and run each action, the demo, both themes.
 
 ## The model contract (`lib/core/types.ts`)
 
-`ModelFactory(ctx) → ModelRuntime`. `ctx` gives `E` (engine), `snd`, `script`, `say(msg)`, `wig(id, now)`, `has(action)`.
+`ModelFactory(ctx) → ModelRuntime`. `ctx` gives `E` (engine), `snd`, `script`, `say(msg)`, `wig(id, now)`, `has(action)`,
+`style(real)`, `open(id, arrive?)` (open another model; `'range'` goes straight onto the range) and `arrive`.
 The runtime returns `pickRoot`, `parts`, `view {target, dist}`, `actions` (every id the def names), `on()`,
 `tick(now, dt)`, `readout()`, and optionally `passive`, `keyDown/keyUp/blur` (held keys), `dispose`.
 The host owns themes, accent, revolve, iso, sound toggle, persistence, picking, messages and the demo stop rule
@@ -137,7 +145,15 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   anything meant to glow (flames, flashes, plumes) well above it.
 - Never add, remove, show or hide lights at runtime in the real view: a change in the light count recompiles every
   shader in the scene (a multi-second freeze per explosion). Keep a fixed pool in a visible group and vary intensity;
-  compile new effects' materials when the real view comes on (`renderer.compileAsync` with the composer's target).
+  compile new effects' materials when the real view comes on (`E.warm(root, holding)`: `renderer.compileAsync` with
+  the composer's target; holding, frames wait until the programs are linked instead of stalling on a sync compile).
+- Shaders compile once per session (`lib/iso/engine.ts`): there is one WebGL renderer for the whole session (a
+  disposed engine hands it to the next), every program stays pinned (`keepPrograms`), and disposing a `ShaderMaterial`
+  keeps its program and source registered (three would otherwise give the next identical material a new cache id and
+  compile it again). Textures generated at load that are shared for the session (`share()` in `lib/real/textures.ts`:
+  skin, concrete, the range hall's, the hands' weave, smoke puffs) are marked `userData.shared`, which the engine's
+  dispose skips. The Real view comes on behind `E.warm()`, and opening a model whose stored style is Real holds the
+  first frames until it is up (no hairline flash, no hairline compile).
 - Pilot view (key P, Real view only, `jet/pilot.ts`): the engine's first-person camera (`E.setEye(spec)`: the model
   poses the head each frame, drag looks round and eases back, wheel zooms; the orbit camera keeps tracking meanwhile,
   so use `E.orbitCamera` for orbit work and `E.camera` for what is drawn). The head looks ahead, into turns, at the
@@ -163,10 +179,31 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   magazines land on the floor or a counter and its flash lights the hall); the range owns the hall (`chamber.ts`),
   the pop-up targets (`targets.ts`), the hands (`hands.ts`), the camera, the drill and the overlay state
   (`hud.ts` → `components/RangeHud.tsx`, which replaces the viewer's panels while `ModelRuntime.hud()` returns one).
-  Reference: the M17 (`rangeGun` in its model.ts). A rifle needs its own hands (a long-gun grip) and sight line.
+  References: the M17, the M8 and the AK-47 (`rangeGun` in each model.ts; the AK on its iron sights, with no hold-open). A rifle sets `kind: 'rifle'`, `fore` (where the support
+  hand holds the handguard), `hip`, `optic()` (the fitted optic's sight line, relief and power range, or null for the
+  irons), `auto()` and `loud()` (a suppressed report makes the hall answer quietly); `grip.fingers` sets how far below the
+  web the middle finger sits on its grip (its trigger guard hangs lower than a pistol's).
+- Poses (`hip`, the rear sight in camera space when not aiming): a pistol is carried out in the firing hand alone, low
+  and right with the wrist running to the corner of the view, and the support hand (its own group, `hands.support`)
+  comes up and wraps the grip as it is aimed; a rifle sits close in, low and right, running diagonally out of the
+  corner with the support hand under the handguard.
+- Changing weapon: 1, 2 … pick a weapon by its place among the models that list a `range` action, Q goes back to the
+  last one. The weapon lowers out of view, the viewer opens the other model with `arrive: 'range'` behind a short
+  "Changing weapon" cover (`Viewer.tsx`), and it comes straight up on the line where the shooter stood (`carry` in
+  `range.ts`, relative to the lane: each weapon's bench, so its hall, differs a little). The canvas stays in place and
+  the next engine keeps the pointer captured (`keepLock`). The model passes `{ id, open }` to `createRange`.
+- Performance: a weapon builds its range as soon as the Real view is up (`onStyle`) and the range compiles off the
+  main thread while the weapon still lies on its bench; G waits for that (`ready`) rather than stall. The hall and
+  targets per bench size (`kits`) and each weapon's hand meshes (meshed a few milliseconds a frame: `meshSteps` and
+  `handMeshes` are generators; a worker was tried, but the production build ships `new Worker(new URL(...))` as a raw
+  file instead of bundling it) are kept for the session, and their materials are never disposed.
+- Optics: aiming ends looking through the scope: the view magnifies (wheel sets the power) behind a clip-space shader
+  picture (tube, eyebox rim, second-focal-plane reticle with an illuminated horseshoe and dot) centred on where the
+  optic's axis points, so sway and recoil move the reticle with the shot. The rifle and hands are hidden there by moving
+  their meshes to layer 1 (never by hiding the root: its muzzle-flash light would change the light count).
 - The hands (`hands.ts`) are anatomy, not boxes: metacarpals, palm and heel pads, jointed fingers and thumbs as rounded
-  cones and ellipsoids, blended with smooth unions and meshed once by surface nets (`sdf.ts`, coarse-to-fine, each hand
-  in its own task so entry never stalls). Fingerless gloves: one material whose colour, roughness, bump depth and skin
+  cones and ellipsoids, blended with smooth unions and meshed once by surface nets (`sdf.ts`, coarse-to-fine; the
+  shapes are in `handshape.ts`, generators spread over frames). Fingerless gloves: one material whose colour, roughness, bump depth and skin
   sheen come per vertex from the region (glove, knuckle pads, strap, skin, nail), with contact shading baked from the
   field. The index finger is a separate mesh hinged at its knuckle and presses the trigger on each shot.
 - Aiming: a quick right click toggles the aim (as Z does), a held right button aims until it is released.
@@ -178,7 +215,8 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   no-shoot −10; the drill is 45 s after a random-delay shot-timer beep; the best score is kept per weapon.
 - Lighting: `RealSpec.stage()` hands the stage an indoor override (room environment, no sky, the sun overhead as the
   house lights, haze); light theme = house lights up, dark theme = low light (floods only, muzzle flash lights the room).
-  Still no runtime lights: lamps are emissive meshes.
+  Still no runtime lights: lamps are emissive meshes. The glow threshold sits above every lamp in the hall (only
+  flashes and sparks glow): with the troffers blooming, the whole hall hazed white whenever the ceiling was in view.
 
 ## Rules that keep the look and the behaviour consistent
 
@@ -197,7 +235,7 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - Trace side profiles from a true side photo at a known scale (overall length ÷ pixels) and say so in a comment;
   draw the profiles back over the photo to check them (the M17 grip and slide came out 25–30 % too big by eye).
 - Keys: one letter per action, unique per model. Reserved by the host: I, T, M, H, Escape, [, ], /. On the range the
-  range takes W A S D, F, R, E, Z, X, C, P, Space, Shift and the arrows while it is on.
+  range takes W A S D, F, R, E, Z, X, C, P, Q, Space, Shift, the digits and the arrows while it is on.
   The catalogue warns in dev about clashes and unknown parts.
 - Demos must survive slow or throttled frames: chain steps with `script.when(cond, f)` (wait until the model has
   settled), not fixed delays alone. End with `script.end()` and leave the model lit.

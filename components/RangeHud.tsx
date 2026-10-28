@@ -12,13 +12,13 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padSta
 const CONTROLS: [string, string][] = [
   ['Mouse', 'look'], ['Left click', 'fire'], ['Right click · Z', 'aim'], ['Wheel', 'zoom while aiming'],
   ['W A S D', 'walk'], ['C', 'kneel'], ['Shift', 'hold breath'], ['R', 'reload'], ['X', 'safety'], ['N', 'night sights'],
-  ['Space', 'start the drill'], ['T', 'house lights'], ['Esc', 'leave the range'],
+  ['Space', 'start the drill'], ['T', 'house lights'], ['1 2 · Q', 'change weapon'], ['Esc', 'leave the range'],
 ];
 
 export default function RangeHud({ h }: { h: Hud }) {
   const live = h.phase === 'live', head = h.phase === 'live' ? clock(h.time) : h.phase === 'standby' ? 'Standby' : h.phase === 'done' ? clock(0) : h.phase === 'setup' ? '—' : 'Free';
   const label = live ? 'Drill' : h.phase === 'free' ? 'Free practice' : h.phase === 'standby' ? 'Wait for the beep' : h.phase === 'done' ? 'Cease fire' : 'Load and make ready';
-  const status = h.reloading ? 'Reloading' : !h.magIn ? 'Magazine out' : h.slideLocked ? 'Slide locked · R' : h.safe ? 'Safe · X' : !h.chamber ? 'Chamber empty' : 'Ready';
+  const status = h.reloading ? 'Reloading' : !h.magIn ? 'Magazine out' : h.slideLocked ? (h.mode ? 'Bolt locked · R' : 'Slide locked · R') : h.safe ? 'Safe · X' : !h.chamber ? 'Chamber empty' : h.mode ? (h.mode === 'auto' ? 'Auto' : 'Semi') : 'Ready';
   const shotsDesc = [...h.shotsList].reverse();
   const r = h.result;
 
@@ -40,6 +40,7 @@ export default function RangeHud({ h }: { h: Hud }) {
       {!h.aiming && <i className="r-dot" aria-hidden="true" />}
       {h.hit.seq > 0 && <i key={`hit${h.hit.seq}`} className={`r-mark z-${h.hit.zone}`} aria-hidden="true" />}
       {h.breath !== null && <i className="r-breath" style={{ ['--b' as string]: h.breath }} aria-hidden="true" />}
+      {h.power !== null && <div className="r-power" aria-label={`Optic at ${h.power} power`}><b>{h.power.toFixed(1)}×</b><span>wheel</span></div>}
       {h.call.text && <div key={`call${h.call.seq}`} className="r-call" role="status">{h.call.text}</div>}
 
       <div className="r-score" aria-label="Score">
@@ -56,6 +57,12 @@ export default function RangeHud({ h }: { h: Hud }) {
               <span>{s.split.toFixed(2)}</span><span>{s.dist ? `${s.dist} m` : '—'}</span>
             </li>
           ))}
+        </ol>
+      )}
+
+      {h.weapons.length > 0 && (
+        <ol className="r-weapons" aria-label="Weapons">
+          {h.weapons.map(w => <li key={w.key} className={w.on ? 'on' : ''} aria-current={w.on || undefined}><kbd>{w.key}</kbd>{w.name}</li>)}
         </ol>
       )}
 

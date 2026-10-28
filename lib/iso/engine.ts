@@ -64,17 +64,27 @@ const NOISE = `float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233
 const MAJOR_ANGLE = 60, EDGE_ANGLE = 30;
 const GROW = 0.55, STRAIGHT = 0.9;
 
-export function createEngine(host: HTMLElement, init: { theme: Theme; accent: AccentId; spin: boolean }) {
+// One WebGL context for the whole session: switching models hands the renderer to the next engine instead of losing
+// it, so its compiled shaders (for every material still alive, such as the shooting range's) and uploads carry over.
+let spare: THREE.WebGLRenderer | null = null;
+// Shader materials (lines, outlines, glow, sky, environment maps, bloom, smoke) key their programs by an id their source
+// gets in the renderer's shader cache, which a dispose gives up: the next identical material then misses the cache and
+// compiles again on every model or weapon change. So disposing one leaves its program and source registered (their
+// uniforms and textures are freed with the material object; the programs are few, and pinned anyway by keepPrograms).
+THREE.ShaderMaterial.prototype.dispose = function () { /* program kept for the session */ };
+
+export function createEngine(host: HTMLElement, init: { theme: Theme; accent: AccentId; spin: boolean; keepLock?: boolean }) {
   const size = () => ({ w: Math.max(1, host.clientWidth), h: Math.max(1, host.clientHeight) });
   let { w: vw, h: vh } = size();
 
   // ── renderer, scene, cameras ──
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = spare ?? new THREE.WebGLRenderer({ antialias: true });
+  spare = null;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(vw, vh);
   renderer.domElement.style.display = 'block';
   renderer.domElement.style.touchAction = 'none';
-  host.prepend(renderer.domElement);
+  if (renderer.domElement.parentElement !== host) host.prepend(renderer.domElement);   // (a handed-over canvas stays put)
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(THEMES.dark.bg);
   const persp = new THREE.PerspectiveCamera(28, vw / vh, 0.1, 600);
@@ -418,6 +428,7 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     if (s === eye) return;
     if (locked && !s?.lock) document.exitPointerLock();
     eye = s; look.yaw = look.pitch = 0; look.drag = null; look.idle = 0;
+    if (s?.lock && locked) s.lock.locked?.(true);          // still captured from the engine before (a weapon change)
     if (s) { look.fov = eyeCam.fov = s.fov; eyeCam.near = s.near; eyeCam.far = s.far; eyeCam.aspect = vw / vh; eyeCam.updateProjectionMatrix(); }
     controls.enabled = !s;
     renderPass.camera = s ? eyeCam : camera;
@@ -476,6 +487,12 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     eye.lock.button(e.button, false);
   };
   const onMenu = (e: Event) => { if (eye?.lock) e.preventDefault(); };
+  // a canvas handed over still captured: kept for a first-person view that is about to come back (init.keepLock: a weapon
+  // change on the range), released otherwise
+  if (document.pointerLockElement === canvas) {
+    if (init.keepLock) { locked = true; setTimeout(() => { if (alive && locked && !eye?.lock) document.exitPointerLock(); }, 8000); }
+    else document.exitPointerLock();
+  }
   document.addEventListener('pointerlockchange', onLockChange);
   document.addEventListener('pointerlockerror', onLockError);
   canvas.addEventListener('mousedown', onMouseDown);
@@ -535,6 +552,38 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
   const tmpV = new THREE.Vector2();
   const ease = (t: number) => t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
   let last = performance.now(), raf = 0, alive = true;
+  // frames are held (the last one stays on screen) while new shaders compile off the main thread: drawing a material
+  // whose program isn't linked yet would stall the page until it is
+  const holds = new Set<Promise<unknown>>();
+  function hold(p: Promise<unknown>, max = 4000) {
+    const h = Promise.race([p.catch(() => {}), new Promise(r => setTimeout(r, max))]);
+    holds.add(h); void h.then(() => holds.delete(h));
+    return h;
+  }
+  // every shader program stays compiled for the session: three deletes a program when the last material using it is
+  // disposed, and the next model or weapon (or the next engine on this renderer) would compile the same source again.
+  // A program is pinned by one extra use; there are a few dozen distinct ones.
+  let pinned = 0;
+  // A program compiled ahead (compileAsync) still costs a few milliseconds on its first draw, where three reads its log
+  // and looks up its uniforms; across a whole range that came to a few hundred milliseconds on taking the line. So
+  // programs that have finished linking are read a few at a time in spare frames, before anything draws them.
+  let untouched = 0;
+  function keepPrograms() {
+    type P = { usedTimes: number; kept?: boolean; touched?: boolean; isReady(): boolean; getUniforms(): unknown; getAttributes(): unknown };
+    const ps = renderer.info.programs as unknown as P[] | null;
+    if (!ps) return;
+    if (ps.length !== pinned) {
+      for (const p of ps) if (!p.kept) { p.kept = true; p.usedTimes++; untouched++; }
+      pinned = ps.length;
+    }
+    if (!untouched) return;
+    const t0 = performance.now();
+    for (const p of ps) {
+      if (p.touched || !p.isReady()) continue;
+      p.touched = true; untouched--; p.getUniforms(); p.getAttributes();
+      if (performance.now() - t0 > 3) break;
+    }
+  }
   function frame(now: number) {
     if (!alive) return;
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -553,7 +602,8 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     const bufH = renderer.getDrawingBufferSize(tmpV).y;
     const pxScale = eye ? bufH / (2 * Math.tan(THREE.MathUtils.degToRad(eyeCam.fov / 2))) : camera === ortho ? bufH * ortho.zoom / orthoH : bufH / fovK();
     glowMats.forEach(m => { m.uniforms.scale.value = pxScale; });
-    composer.render();
+    if (!holds.size) composer.render();
+    keepPrograms();
     raf = requestAnimationFrame(frame);
   }
 
@@ -583,18 +633,17 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     canvas.removeEventListener('mousedown', onMouseDown);
     window.removeEventListener('mouseup', onMouseUp);
     document.removeEventListener('contextmenu', onMenu);
-    if (locked) document.exitPointerLock();
     controls.dispose();
     scene.traverse(o => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
       const mats = ([] as THREE.Material[]).concat((m.material as THREE.Material | THREE.Material[]) || []);
-      mats.forEach(x => { Object.values(x as unknown as Record<string, unknown>).forEach(v => { if (v instanceof THREE.Texture) v.dispose(); }); x.dispose(); });
+      mats.forEach(x => { Object.values(x as unknown as Record<string, unknown>).forEach(v => { if (v instanceof THREE.Texture && !v.userData.shared) v.dispose(); }); x.dispose(); });
     });
     composer.dispose();
-    renderer.dispose();
-    renderer.forceContextLoss();
-    renderer.domElement.remove();
+    renderer.setRenderTarget(null); renderer.renderLists.dispose();
+    renderer.shadowMap.enabled = false; renderer.toneMapping = THREE.NoToneMapping; renderer.toneMappingExposure = 1;
+    spare = renderer;                               // the canvas stays in place (and captured, if it was) for the next engine
   }
 
   return {
@@ -610,6 +659,19 @@ export function createEngine(host: HTMLElement, init: { theme: Theme; accent: Ac
     get eye() { return eye !== null; }, setEye,
     /** the pointer is captured for game controls */
     get locked() { return locked; },
+    /** hold drawing until `p` settles (at most `max` ms) */
+    hold,
+    /**
+     * compile the materials under `root` (hidden ones too, lit by the scene) off the main thread; with `holding`,
+     * frames hold until they're linked (for materials about to be drawn), otherwise it just returns when they are
+     */
+    warm(root: THREE.Object3D = scene, holding = true) {
+      const prev = renderer.getRenderTarget(); renderer.setRenderTarget(composer.readBuffer);
+      let p: Promise<unknown>;
+      try { p = renderer.compileAsync(root, eye ? eyeCam : camera, scene); } catch { p = Promise.resolve(); }
+      renderer.setRenderTarget(prev);
+      return holding ? hold(p) : p.catch(() => {});
+    },
     /** add a post pass before tone mapping (bloom and the like) */
     addPreOutputPass(p: Pass) { composer.insertPass(p, 1); },
     mats: { body: bodyMat, recess: recessMat, pad: padMat, glass: glassMat, line: lineMat, major: majorMat },
