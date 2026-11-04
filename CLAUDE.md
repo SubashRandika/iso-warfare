@@ -54,7 +54,11 @@ model is its own chunk; three.js loads with the first model.
    port cover, quad rail, holographic sight with a flip-to-side magnifier, an aiming laser, a telescoping skeleton stock
    (a thin core extrusion under a thicker frame extrusion whose holes are the pockets, so they read as moulded recesses,
    a proud ribbed strut, a holed rubber pad); through an
-   AR rear sight the eye sees a ring round a large aperture, so it is modelled as one, not as a plate with a pinhole)
+   AR rear sight the eye sees a ring round a large aperture, so it is modelled as one, not as a plate with a pinhole),
+   `lib/models/rifles/m4a1/model.ts` (a detachable carry handle with the A2 rear sight, built as two arch walls either side
+   of a sighting groove, since a solid handle stands above the sight line and blanks the aperture; ribbed carbine
+   handguards, the A-frame front sight, and a permanent M203 whose barrel slides forward to load and whose grenade flies
+   ballistically, arms at 14 m and bursts through `RangeHold.cast`/`blast`)
    and `lib/models/fighters/` (large lofted airframes,
    hinged surfaces, gear, bays). Several models of one kind share a sim the way the fighters share `jet/sim.ts`.
 4. Check: `npx tsc --noEmit`, `npx next build`, then open `/?model=<id>` and run each action, the demo, both themes.
@@ -181,12 +185,16 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 
 - Key G on a small arm (Real view; it switches the style on by itself): the weapon leaves its bench for gloved hands
   on lane 3 of an indoor range (`lib/range/`). The weapon supplies a `RangeGun` (`lib/range/types.ts`: sight line,
-  muzzle, grip, recoil, trigger/magazine/rack/safety, and `hold(on, {ground, flash})` so its cases and dropped
-  magazines land on the floor or a counter and its flash lights the hall); the range owns the hall (`chamber.ts`),
+  muzzle, grip, recoil, trigger/magazine/rack/safety, and `hold(on, RangeHold)` so its cases and dropped magazines land
+  on the floor or a counter, its flash lights the hall, and a projectile it flies itself can `cast(from, to)` against the
+  hall and `blast(at, normal)` there: fire, a smoke cloud lifted clear of the target shield, scorch, boom, nearby targets
+  knocked down); the range owns the hall (`chamber.ts`),
   the pop-up targets (`targets.ts`), the hands (`hands.ts`), the camera, the drill and the overlay state
   (`hud.ts` → `components/RangeHud.tsx`, which replaces the viewer's panels while `ModelRuntime.hud()` returns one).
-  References: the M17, the M8, the AK-47 and the HK416 (`rangeGun` in each model.ts; the AK on its iron sights, with no
-  hold-open; the HK416 with a holographic sight, magnifier and laser). A rifle sets `kind: 'rifle'`, `fore` (where the support
+  References: the M17, the M8, the AK-47, the HK416 and the M4A1 (`rangeGun` in each model.ts; the AK on its iron sights,
+  with no hold-open; the HK416 with a holographic sight, magnifier and laser; the M4A1 through its carry handle's
+  aperture, its support hand on the M203). `keys` lists a weapon's own keys for the take-the-line card (the M4A1's N and
+  B load and fire the launcher; N replaces the card's 'night sights'). A rifle sets `kind: 'rifle'`, `fore` (where the support
   hand holds the handguard), `hip`, `optic()` (the fitted optic's sight line, relief and power range, or null for the
   irons), `auto()` and `loud()` (a suppressed report makes the hall answer quietly); `grip.fingers` sets how far below the
   web the middle finger sits on its grip (its trigger guard hangs lower than a pistol's).
@@ -248,7 +256,7 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   draw the profiles back over the photo to check them (the M17 grip and slide came out 25–30 % too big by eye).
 - Keys: one letter per action, unique per model. Reserved by the host: I, T, M, H, Escape, [, ], /. On the range the
   range takes W A S D, F, R, E, Z, X, C, P, Q, Space, Shift, the digits and the arrows while it is on (other model keys,
-  such as the HK416's V magnifier and L laser, still work on the line).
+  such as the HK416's V magnifier and L laser and the M4A1's N and B, still work on the line).
   The catalogue warns in dev about clashes and unknown parts.
 - Demos must survive slow or throttled frames: chain steps with `script.when(cond, f)` (wait until the model has
   settled), not fixed delays alone. End with `script.end()` and leave the model lit.

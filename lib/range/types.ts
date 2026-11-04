@@ -69,6 +69,8 @@ export interface RangeGun {
   loud?(): number;
   /** a laser aiming module that is switched on: its emitter and beam direction (the range puts its dot where it lands) */
   laser?(): { from: THREE.Vector3; dir: THREE.Vector3 } | null;
+  /** the weapon's own keys on the line, for the take-the-line card (one listed here replaces the card's entry for that key) */
+  keys?: [string, string][];
   trigger(): TriggerResult;
   /** magazine out (it falls away) or a full one in */
   magazine(): void;
@@ -79,9 +81,18 @@ export interface RangeGun {
   state(): GunState;
   /**
    * taken into the hands (true) or set back on the bench; `ground(x, z)` gives the height that cases and dropped
-   * magazines land on, and `flash` how far the muzzle flash lights the room (metres)
+   * magazines land on, and `flash` how far the muzzle flash lights the room (metres). For projectiles the weapon flies
+   * itself (a 40 mm grenade): `cast(from, to)` finds what the segment meets in the hall, and `blast(at, normal)` bursts
+   * a grenade there (fire, smoke, the boom, nearby targets knocked down)
    */
-  hold(on: boolean, o?: { ground(x: number, z: number): number; flash: number }): void;
+  hold(on: boolean, o?: RangeHold): void;
+}
+
+export interface RangeHold {
+  ground(x: number, z: number): number;
+  flash: number;
+  cast(from: THREE.Vector3, to: THREE.Vector3): { point: THREE.Vector3; normal: THREE.Vector3 } | null;
+  blast(at: THREE.Vector3, normal: THREE.Vector3): void;
 }
 
 /** the bench the weapon lies on (RealSpec.bench): the range's own lane is built round it */

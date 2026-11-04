@@ -48,4 +48,6 @@ export interface RangeHud {
   result: RangeResult | null;
   /** the weapons that can be changed to on the range (key, name, the one in the hands) */
   weapons: { key: string; name: string; on: boolean }[];
+  /** the weapon's own keys (RangeGun.keys) */
+  keys: [string, string][];
 }

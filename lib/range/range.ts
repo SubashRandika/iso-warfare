@@ -339,6 +339,38 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     else { dust([0.3, 0.3, 0.3], 3, 0.12); snd.burst(0.04, 0.08 * a, { freq: 1200, at: delay }); }
   }
 
+  // ── projectiles the weapon flies itself (a 40 mm grenade): what a segment of its path meets, and its burst ──
+  const castRay = new THREE.Raycaster();
+  function cast(from: THREE.Vector3, to: THREE.Vector3) {
+    const dir = to.clone().sub(from), len = dir.length();
+    if (len < 1e-6) return null;
+    castRay.set(from, dir.divideScalar(len)); castRay.far = len;
+    const h = castRay.intersectObjects(colliders, false).find(i => { const t = i.object.userData.target as Target | undefined; return !t || T.exposed(t); });
+    if (!h) return null;
+    const n = (h.face?.normal ?? dir.clone().negate()).clone().transformDirection(h.object.matrixWorld);
+    if (n.dot(dir) > 0) n.negate();
+    return { point: h.point.clone(), normal: n };
+  }
+  /** a grenade bursting: fire and smoke, a scorch, the crack and the hall's boom (late by the distance), targets near
+   *  it knocked flat (scored as C hits, a no-shoot as a no-shoot) */
+  function blast(at: THREE.Vector3, surface: THREE.Vector3) {
+    const rnd = () => new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+    // the cloud throws out of the surface and back toward the line (off the berm's slope it would bury itself in the back
+    // wall), then billows up where it burst, over the target shield (thrown hard, it vanished behind the baffles)
+    const back = eyePos.clone().sub(at).setY(0).normalize();
+    const n = surface.clone().addScaledVector(back, 0.7).add(new THREE.Vector3(0, 0.4, 0)).normalize();
+    for (let i = 0; i < 44; i++) fx.fire.emit(at.clone().addScaledVector(n, 0.15), { v: n.clone().multiplyScalar(1 + Math.random() * 2.5).add(rnd().multiplyScalar(4)), s0: 0.6, s1: 0.15, life: 0.14 + Math.random() * 0.3, c: [9, 5.5, 2.2], c1: [2, 0.4, 0.05], drag: 4, rise: 1 });
+    for (let i = 0; i < 56; i++) fx.smoke.emit(at.clone().addScaledVector(back, 0.8 + Math.random() * 0.8).add(rnd().multiplyScalar(0.5)).add(new THREE.Vector3(0, 0.4 + Math.random() * 1.6, 0)), { v: n.clone().multiplyScalar(0.4 + Math.random() * 1.2).add(rnd().multiplyScalar(0.9)).add(new THREE.Vector3(0, 0.8, 0)), s0: 0.7, s1: 2.6 + Math.random() * 1.6, life: 2.5 + Math.random() * 2, c: [0.95, 0.9, 0.84], a: 0.85, drag: 2.2, rise: 0.3 });
+    holes.add(at, surface, 0.32);
+    const d = at.distanceTo(eyePos), a = att(d), delay = d / 343;
+    snd.burst(0.6, 1.0 * a, { type: 'lowpass', freq: 650, at: delay }); snd.burst(0.07, 0.75 * a, { freq: 2600, q: 0.6, at: delay });
+    snd.tone(42, 1.0, 0.55 * a, { type: 'sine', to: 22, at: delay });
+    roomShot(1.5);
+    kick.cam += 0.5 * DEG;
+    const tp = new THREE.Vector3();
+    for (const t of T.list) if (T.exposed(t) && t.hinge.getWorldPosition(tp) && Math.hypot(tp.x - at.x, tp.z - at.z) < 3.2) struck(t, t.kind === 'ns' ? 'NS' : 'C');
+  }
+
   // ── reload: magazine out, a full one in, slide released (or racked); entering the lane loads and makes ready ──
   function startReload(ready = false) {
     if (reload || entering && !ready) return;
@@ -600,7 +632,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     aimK = 0; aimToggle = aimHeld = false; breath = 1; gasp = 0; Object.assign(kick, { rise: 0, vRise: 0, push: 0, vPush: 0, cam: 0 });
     shots = []; shotN = 0; result = null; lastShot = sec; called = { seq: called.seq + 1, text: 'Load and make ready' };
     root.visible = true; T.reset();
-    gun.hold(true, { ground: groundAt, flash: 14 });
+    gun.hold(true, { ground: groundAt, flash: 14, cast, blast });
     shadows.length = 0;
     gun.root.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { shadows.push([m, m.castShadow, m.receiveShadow]); m.receiveShadow = false; } });
     hands.group.visible = false;
@@ -658,6 +690,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
         aiming: aimK > 0.5, mode: s.mode ?? null, power: scoped ? Math.round(power * 10) / 10 : null, breath: holding || gasp > 0 || breath < 1 ? Math.round(breath * 20) / 20 : null,
         shotsList: shots.slice(-8), hit, call: called, result,
         weapons: nav && WEAPONS.length > 1 ? WEAPONS.map((w, i) => ({ key: String(i + 1), name: w.name, on: w.id === nav.id })) : [],
+        keys: gun.keys ?? [],
       };
     },
     /** waiting for the range to finish compiling before it goes on */

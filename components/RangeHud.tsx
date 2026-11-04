@@ -14,6 +14,12 @@ const CONTROLS: [string, string][] = [
   ['W A S D', 'walk'], ['C', 'kneel'], ['Shift', 'hold breath'], ['R', 'reload'], ['X', 'safety'], ['N', 'night sights'],
   ['Space', 'start the drill'], ['T', 'house lights'], ['1 2 · Q', 'change weapon'], ['Esc', 'leave the range'],
 ];
+/** the card's controls with the weapon's own keys laid over them (same key: replaced; new keys before Esc) */
+const controls = (own: [string, string][]) => {
+  const list = CONTROLS.map(([k, v]) => [k, own.find(o => o[0] === k)?.[1] ?? v] as [string, string]);
+  list.splice(list.length - 1, 0, ...own.filter(([k]) => !CONTROLS.some(c => c[0] === k)));
+  return list;
+};
 
 export default function RangeHud({ h }: { h: Hud }) {
   const live = h.phase === 'live', head = h.phase === 'live' ? clock(h.time) : h.phase === 'standby' ? 'Standby' : h.phase === 'done' ? clock(0) : h.phase === 'setup' ? '—' : 'Free';
@@ -78,7 +84,7 @@ export default function RangeHud({ h }: { h: Hud }) {
         <div className="r-card r-take">
           <b className="r-big">Lane {h.lane}</b>
           <p>Click to take the line</p>
-          <dl>{CONTROLS.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+          <dl>{controls(h.keys).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
         </div>
       )}
 
