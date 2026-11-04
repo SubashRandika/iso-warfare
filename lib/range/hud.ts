@@ -53,6 +53,7 @@ export interface RangeHud {
   keys: [string, string][];
   /** the indoor hall, or the long-distance field */
   site: 'hall' | 'field';
-  /** the field's data: the turret's elevation (mrad), the wind (m/s; + from the left), the called target's distance */
-  dope: { elev: number; wind: number; dist: number | null } | null;
+  /** the field's data: the turret's elevation (mrad), the wind (m/s; + from the left), the called target's distance, and
+   *  the spotter's dope for it: the elevation to dial and the hold for the wind (mrad, + to the left) */
+  dope: { elev: number; wind: number; dist: number | null; need: number | null; hold: number | null } | null;
 }

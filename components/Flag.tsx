@@ -3,7 +3,7 @@
 import type { JSX } from 'react';
 import type { CountryId } from '@/lib/catalog/types';
 
-export const COUNTRY_NAMES: Record<CountryId, string> = { US: 'United States', RU: 'Russia', CN: 'China', SU: 'Soviet Union', DE: 'Germany' };
+export const COUNTRY_NAMES: Record<CountryId, string> = { US: 'United States', RU: 'Russia', CN: 'China', SU: 'Soviet Union', DE: 'Germany', GB: 'United Kingdom' };
 
 /** a five-pointed star centred at (cx, cy), outer radius r, one point toward angle a (radians, y down) */
 function star(cx: number, cy: number, r: number, a = -Math.PI / 2) {
@@ -74,7 +74,21 @@ function DE() {
   );
 }
 
-const FLAGS: Record<CountryId, () => JSX.Element> = { US, RU, CN, SU, DE };
+/** United Kingdom, 2:1: the Union Flag, its red saltire counterchanged (offset clockwise within the white) */
+function GB() {
+  return (
+    <svg viewBox="0 0 60 30">
+      <clipPath id="flag-gb-saltire"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z" /></clipPath>
+      <rect width="60" height="30" fill="#012169" />
+      <path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" strokeWidth="6" />
+      <path d="M0,0 L60,30 M60,0 L0,30" clipPath="url(#flag-gb-saltire)" stroke="#C8102E" strokeWidth="4" />
+      <path d="M30,0 v30 M0,15 h60" stroke="#fff" strokeWidth="10" />
+      <path d="M30,0 v30 M0,15 h60" stroke="#C8102E" strokeWidth="6" />
+    </svg>
+  );
+}
+
+const FLAGS: Record<CountryId, () => JSX.Element> = { US, RU, CN, SU, DE, GB };
 
 export function Flag({ country }: { country: CountryId }) {
   const F = FLAGS[country];

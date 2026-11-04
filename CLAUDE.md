@@ -63,7 +63,10 @@ model is its own chunk; three.js loads with the first model.
    `lib/models/sniper-rifles/mk22/model.ts` (a bolt action that lifts, runs back and ejects; a skeleton stock folding to
    the right on an outboard hinge; a hollow handguard of thin walls so the barrel shows through its M-LOK slots; a
    bipod whose inner legs telescope out on the range; a suppressor sliding onto the brake; a calibre change that swaps
-   barrel length, magazine, cartridge and ballistics; a 5–25× scope whose elevation cap turns with the range's turret)
+   barrel length, magazine, cartridge and ballistics; a 5–25× scope whose elevation cap turns with the range's turret),
+   `lib/models/sniper-rifles/l115a3/model.ts` (traced from a left-side photo, so z = (IX0 − ix)·scale and the photo's
+   detail is the +x side; a round action in a thumbhole stock split at its folding joint, the butt folding forward along
+   the left; a rising cheek piece and a monopod spike that screws down)
    and `lib/models/fighters/` (large lofted airframes,
    hinged surfaces, gear, bays). Several models of one kind share a sim the way the fighters share `jet/sim.ts`.
 4. Check: `npx tsc --noEmit`, `npx next build`, then open `/?model=<id>` and run each action, the demo, both themes.
@@ -253,7 +256,11 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
   stepped every 4 ms with gravity and drag against the air moving with the wind, until it meets the ground, a plate or
   a structure; the effects land after the time of flight and the steel's ring comes back at the speed of sound. The bore
   is angled so the round crosses the line of sight at the zero (100 m), plus the turret (`RangeGun.turret`: U up, J
-  down, held keys repeat; N to zero). The wind is a gusting crosswind drawn on entry (the flags and the overlay's data
+  down, held keys repeat; N dials the spotter's elevation, pressed again back to zero). The spotter's dope for the called
+  plate (`dopeFor`: elevation over the zero from the same flight model, and the wind hold from the drift lag
+  w·(t − D/v₀), cached per distance) is in the call and the overlay's data panel; dialled and held as given, a centre
+  hold hits at 1000 m. After a shot the view keeps almost none of its recoil kick when rested on the bipod (it used to
+  keep a pistol's 2 mils of climb and ±2.6 mils of yaw a shot, so the next round missed the plate). The wind is a gusting crosswind drawn on entry (the flags and the overlay's data
   panel show it). The scope's `reticle: 'mil'` is a first-focal-plane milliradian grid (marks every mil, longer every
   fifth, half-mil holdover marks, posts beyond ten), scaled from the scope's field of view. The spotter calls the plate,
   then "Hit" or where a miss passed the called plate in mils. Seated at the bench (C stands), a deployed bipod

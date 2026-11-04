@@ -196,6 +196,9 @@ button { font: inherit; color: inherit; }
 .r-dope dd b { color: var(--ink); font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: 24px; line-height: 1; letter-spacing: 0.02em; }
 .r-dope span { display: flex; gap: 3px; justify-self: end; }
 .r-dope .r-wind { color: var(--accent); font-size: 20px; line-height: 1; }
+.r-dope .r-spot dd { grid-column: 1 / -1; }
+.r-dope .r-spot dd b { font-size: 18px; }
+.r-dope .r-spot dd.ok b { color: var(--accent); }
 .range.aiming .r-dope { opacity: 0.85; }
 .r-call { position: absolute; left: 0; right: 0; top: 30%; text-align: center; font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: clamp(30px, 5vw, 56px); line-height: 1; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); animation: r-call 2s ease-out forwards; }
 @keyframes r-call { 0% { opacity: 0; transform: translateY(6px); } 10% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; } }

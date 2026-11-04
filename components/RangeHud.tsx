@@ -53,6 +53,12 @@ export default function RangeHud({ h }: { h: Hud }) {
           <div><dt>Wind</dt><dd><b>{Math.abs(h.dope.wind).toFixed(1)}</b> m/s</dd>
             <span className="r-wind" aria-label={h.dope.wind > 0 ? 'from the left' : 'from the right'}>{h.dope.wind > 0 ? '→' : '←'}</span></div>
           <div><dt>Target</dt><dd><b>{h.dope.dist ?? '—'}</b>{h.dope.dist ? ' m' : ''}</dd></div>
+          {h.dope.need !== null && h.dope.hold !== null && (
+            <div className="r-spot"><dt>Spotter</dt>
+              <dd className={Math.abs(h.dope.elev - h.dope.need) < 0.05 ? 'ok' : ''}>dial <b>{h.dope.need.toFixed(1)}</b></dd>
+              <dd>hold <b>{Math.abs(h.dope.hold).toFixed(1)}</b> {Math.abs(h.dope.hold) < 0.05 ? '' : h.dope.hold > 0 ? 'left' : 'right'}</dd>
+            </div>
+          )}
         </dl>
       )}
       {h.call.text && <div key={`call${h.call.seq}`} className="r-call" role="status">{h.call.text}</div>}

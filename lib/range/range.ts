@@ -279,7 +279,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     const t = field && phase === 'free' ? T.list[(lastPopped + 1) % T.list.length] : free[Math.floor(Math.random() * free.length)];
     T.pop(t, kind, sec, until); lastPopped = t.i;
     if (kind === 'hostile' && phase === 'live') stats.presented++;
-    if (field) { call(`Target · ${t.dist} m`); return; }
+    if (field) { call(`Target · ${t.dist} m · dial ${dopeFor(t.dist).elev.toFixed(1)}`); return; }
     const a = att(t.dist + 2);                                // the lifter's motor and its stop
     snd.tone(150, 0.26, 0.03 * a, { type: 'sawtooth', to: 230 }); snd.click(0.3, 0.5);
   }
@@ -325,7 +325,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     gun.root.updateMatrixWorld(true);
     const S = sightPoses(), rw = gun.root.localToWorld(tmpA.copy(S.rear)), fw = gun.root.localToWorld(tmpB.copy(S.front)), mw = gun.root.localToWorld(tmpC.copy(gun.muzzle));
     const sd = fw.sub(rw).normalize();
-    if (field) { flight(mw.clone(), sd.clone(), S); afterShot(mw, sd); return; }
+    if (field) { const m = mw.clone(), d = sd.clone(); flight(m.clone(), d.clone(), S); afterShot(m, d); return; }
     const dir = rw.addScaledVector(sd, ZERO).sub(mw).normalize();
     // mechanical spread (about 2 MOA), more from the hip and on the move
     const spread = 0.0006 + (1 - aimK) * 0.0035 + Math.min(1, me.vel.length() / 2) * 0.004;
@@ -357,7 +357,10 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     // recoil: the muzzle flips and the gun drives back into the hands; the eye follows a little and recovers most of it
     const r = 0.85 + Math.random() * 0.3, hip = 1 + (1 - aimK) * 0.35;
     kick.vRise += gun.recoil.rise * 30 * r * hip; kick.vPush += gun.recoil.push * 30 * r;
-    kick.cam += (gun.recoil.cam ?? 0.85 * DEG) * r * hip; me.yaw += (Math.random() - 0.5) * 0.3 * DEG; me.pitch += 0.12 * DEG * r;
+    // what stays after the kick: a pistol or rifle held in the hands ends up off its aim, but a rifle rested on a bipod
+    // settles back almost where it was (left as it was, it climbed about 2 mils a shot and missed the next plate)
+    const stays = field ? (gun.bipod?.() && me.kneel < 0.2 ? 0.04 : 0.35) : 1;
+    kick.cam += (gun.recoil.cam ?? 0.85 * DEG) * r * hip; me.yaw += (Math.random() - 0.5) * 0.3 * DEG * stays; me.pitch += 0.12 * DEG * r * stays;
     roomShot(gun.loud?.() ?? 1);
     // a wisp of powder smoke from the muzzle
     for (let i = 0; i < 3; i++) fx.smoke.emit(mw.clone().addScaledVector(dir, 0.02 + i * 0.03), { v: dir.clone().multiplyScalar(0.6 + i * 0.3).add(new THREE.Vector3(0, 0.1, 0)), s0: 0.03, s1: 0.3, life: 1.5 + Math.random(), c: [0.72, 0.72, 0.7], a: 0.22, drag: 2.4, rise: 0.22 });
@@ -408,6 +411,22 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     let x = 0, y = 0, vx = v0, vy = 0;
     while (x < zero) { const sp = Math.hypot(vx, vy); vx += -k * sp * vx * STEP; vy += (-k * sp * vy - G) * STEP; x += vx * STEP; y += vy * STEP; }
     return (h - y) / zero;
+  }
+  /** the spotter's data for a distance: the elevation to dial (mrad over the zero) and the hold for the wind as it blows
+   *  now (mrad, + to the left: into a wind from the left); the flight time behind the hold is cached per distance */
+  const dopes = new Map<string, { elev: number; tof: number }>();
+  function dopeFor(D: number) {
+    const B = gun.ballistics?.() ?? { v0: 850, k: 0.0005, zero: 100 }, key = `${B.v0}:${B.k}:${B.zero}:${D}`, h = sightPoses().rear.y - gun.muzzle.y;
+    let d = dopes.get(key);
+    if (!d) {
+      let x = 0, vx = B.v0, t = 0;
+      while (x < D) { vx += -B.k * vx * vx * STEP; x += vx * STEP; t += STEP; }
+      d = { elev: Math.max(0, (zeroAngle(B.v0, B.k, D, h) - zeroAngle(B.v0, B.k, B.zero, h)) * 1000), tof: t };
+      dopes.set(key, d);
+    }
+    // the wind drifts the round by its speed times the flight's lag behind a flight in a vacuum
+    const drift = windF.x * (d.tof - D / B.v0);
+    return { elev: d.elev, hold: -drift / D * 1000 };
   }
   function flight(mw: THREE.Vector3, sd: THREE.Vector3, S: ReturnType<typeof sightPoses>) {
     const B = gun.ballistics?.() ?? { v0: 850, k: 0.0005, zero: 100 };
@@ -805,7 +824,8 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
       const tu = gun.turret;
       if (tu && (k === 'u' || k === 'j' || k === 'n')) {          // the elevation turret, a click at a time (held, it runs)
         const was = dial;
-        dial = k === 'n' ? 0 : clamp(Math.round((dial + (k === 'u' ? tu.step : -tu.step)) / tu.step) * tu.step, 0, tu.max);
+        const want = (() => { const c = T.list.find(t => t.state === 'up'); return c ? clamp(Math.round(dopeFor(c.dist).elev / tu.step) * tu.step, 0, tu.max) : 0; })();
+        dial = k === 'n' ? (Math.abs(dial - want) < 1e-6 ? 0 : want) : clamp(Math.round((dial + (k === 'u' ? tu.step : -tu.step)) / tu.step) * tu.step, 0, tu.max);
         if (dial !== was) { tu.set(dial); snd.click(0, k === 'n' ? 0.7 : 1.6); }
         return true;
       }
@@ -840,7 +860,10 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
         weapons: nav && WEAPONS.length > 1 ? WEAPONS.map((w, i) => ({ key: String(i + 1), name: w.name, on: w.id === nav.id })) : [],
         keys: gun.keys ?? [],
         site,
-        dope: field ? { elev: Math.round(dial * 10) / 10, wind: Math.round(windF.x * -10) / 10, dist: T.list.find(t => t.state === 'up')?.dist ?? null } : null,
+        dope: field ? (() => {
+          const c = T.list.find(t => t.state === 'up'), d = c ? dopeFor(c.dist) : null;
+          return { elev: Math.round(dial * 10) / 10, wind: Math.round(windF.x * -10) / 10, dist: c?.dist ?? null, need: d ? Math.round(d.elev * 10) / 10 : null, hold: d ? Math.round(d.hold * 10) / 10 : null };
+        })() : null,
       };
     },
     /** waiting for the range to finish compiling before it goes on */

@@ -469,7 +469,7 @@ const model: ModelFactory = ({ E, snd, script, say, style, def, open, arrive }) 
       return r;
     },
     loud: () => st.supp ? 0.35 : 1,
-    keys: [['U J', 'dial elevation'], ['N', 'turret to zero'], ['R', 'work the bolt'], ['C', 'stand / sit'], ['B', 'bipod']],
+    keys: [['U J', 'dial elevation'], ['N', 'dial the spotter’s elevation'], ['R', 'work the bolt'], ['C', 'stand / sit'], ['B', 'bipod']],
     ballistics: () => ({ v0: CALS[st.cal].v0, k: CALS[st.cal].k, zero: 100 }),
     turret: { step: 0.1, max: 20, set(m) { st.dial = m; } },
     bipod: () => st.bipod,
