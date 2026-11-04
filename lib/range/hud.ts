@@ -18,6 +18,7 @@ export interface RangeResult {
   zones: Record<'A' | 'C' | 'D', number>;
   accuracy: number;                // per cent of shots that hit a hostile
   reaction: number;                // mean seconds from a target standing up to its hit (0 if none)
+  longest: number;                 // the field: the farthest hit, metres
 }
 
 export interface RangeHud {
@@ -50,4 +51,8 @@ export interface RangeHud {
   weapons: { key: string; name: string; on: boolean }[];
   /** the weapon's own keys (RangeGun.keys) */
   keys: [string, string][];
+  /** the indoor hall, or the long-distance field */
+  site: 'hall' | 'field';
+  /** the field's data: the turret's elevation (mrad), the wind (m/s; + from the left), the called target's distance */
+  dope: { elev: number; wind: number; dist: number | null } | null;
 }

@@ -104,24 +104,8 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
     else if (spec.follow) { spec.follow.getWorldPosition(aimAt); aimAt.y = focus.y; } else aimAt.copy(focus);
     sun.position.copy(aimAt).addScaledVector(sunDir, sunDist); sun.target.position.copy(aimAt); sun.target.updateMatrixWorld();
   }
-  /** an indoor set: a lit room's reflections, no sky, the sun overhead as the house lights */
-  function applyIndoor(o: StageOverride) {
-    const s = E.scene;
-    sky.visible = o.sky;
-    s.environment = o.env === 'room' ? roomEnv().texture : envRT?.texture ?? null; s.environmentIntensity = o.envI;
-    s.fog = o.fog ? new THREE.FogExp2(o.fog.color, o.fog.density) : null;
-    E.renderer.toneMapping = THREE.ACESFilmicToneMapping; E.renderer.toneMappingExposure = o.exposure;
-    E.lights.hemi.intensity = 0; E.lights.ambient.intensity = 0; E.lights.fill.intensity = 0;
-    sun.color.set(o.sun.color); sun.intensity = o.sun.intensity; sun.castShadow = true;
-    sunDir.copy(o.sun.dir).normalize(); sunDist = o.sun.size * 2.5;
-    shadowBox(o.sun.size, sunDist, o.sun.size * 0.0012); aimSun();
-    bloom.strength = o.bloom; bloom.threshold = o.bloomT;
-  }
-  function applyTime() {
-    indoor = spec.stage?.() ?? null;
-    if (indoor) { if (!envRT) { envSky.material.uniforms.cloudCoverage.value = 0; envRT = pmrem.fromScene(envScene, 0.02); envKey = E.theme; } applyIndoor(indoor); return; }
-    sky.visible = true; sunDist = SUN; shadowBox(S * 1.4, SUN, S * 0.0018);
-    const T = E.theme === 'light' ? TIMES.day : TIMES.dusk, key = E.theme;
+  /** colour the sky (and the one its reflections come from) for a time of day; returns the direction to the sun */
+  function skyTime(T: typeof TIMES.day, key: string) {
     const el = THREE.MathUtils.degToRad(T.el), az = THREE.MathUtils.degToRad(T.az);
     const dir = new THREE.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
     for (const s of [sky, envSky]) {
@@ -134,6 +118,41 @@ export function createRealism(E: Engine, spec: RealSpec, root: THREE.Object3D) {
       envSky.material.uniforms.cloudCoverage.value = 0;           // clouds in reflections only add noise
       envRT = pmrem.fromScene(envScene, 0.02);
     }
+    return dir;
+  }
+  /** an outdoor set (the long-distance range): the sky at its time of day, the set's own haze and shadow box */
+  function applyOutdoor(o: StageOverride, time: 'day' | 'dusk') {
+    const s = E.scene, T = TIMES[time];
+    sunDir.copy(skyTime(T, time));
+    sky.visible = true; s.environment = envRT!.texture; s.environmentIntensity = T.env;
+    s.fog = new THREE.FogExp2(o.fog?.color ?? T.fog, o.fog?.density ?? T.fogD);
+    E.renderer.toneMapping = THREE.ACESFilmicToneMapping; E.renderer.toneMappingExposure = T.exposure;
+    E.lights.hemi.intensity = 0; E.lights.ambient.intensity = 0; E.lights.fill.intensity = 0;
+    sun.color.set(T.sunCol); sun.intensity = T.sun; sun.castShadow = true;
+    sunDist = o.sun.size * 2.5; shadowBox(o.sun.size, sunDist, o.sun.size * 0.0012); aimSun();
+    bloom.strength = T.bloom; bloom.threshold = T.bloomT;
+  }
+  /** an indoor set: a lit room's reflections, no sky, the sun overhead as the house lights */
+  function applyIndoor(o: StageOverride) {
+    const s = E.scene;
+    ground.visible = o.ground !== false;
+    if (o.time) { applyOutdoor(o, o.time); return; }
+    sky.visible = o.sky;
+    s.environment = o.env === 'room' ? roomEnv().texture : envRT?.texture ?? null; s.environmentIntensity = o.envI;
+    s.fog = o.fog ? new THREE.FogExp2(o.fog.color, o.fog.density) : null;
+    E.renderer.toneMapping = THREE.ACESFilmicToneMapping; E.renderer.toneMappingExposure = o.exposure;
+    E.lights.hemi.intensity = 0; E.lights.ambient.intensity = 0; E.lights.fill.intensity = 0;
+    sun.color.set(o.sun.color); sun.intensity = o.sun.intensity; sun.castShadow = true;
+    sunDir.copy(o.sun.dir).normalize(); sunDist = o.sun.size * 2.5;
+    shadowBox(o.sun.size, sunDist, o.sun.size * 0.0012); aimSun();
+    bloom.strength = o.bloom; bloom.threshold = o.bloomT;
+  }
+  function applyTime() {
+    indoor = spec.stage?.() ?? null;
+    if (indoor) { if (!envRT) { envSky.material.uniforms.cloudCoverage.value = 0; envRT = pmrem.fromScene(envScene, 0.02); envKey = 'plain'; } applyIndoor(indoor); return; }
+    sky.visible = true; ground.visible = true; sunDist = SUN; shadowBox(S * 1.4, SUN, S * 0.0018);
+    const T = E.theme === 'light' ? TIMES.day : TIMES.dusk;
+    const dir = skyTime(T, E.theme === 'light' ? 'day' : 'dusk');
     const s = E.scene;
     s.environment = envRT!.texture; s.environmentIntensity = T.env;   // the background colour stays: the sky draws over it
     s.fog = new THREE.FogExp2(T.fog, T.fogD * FOG);

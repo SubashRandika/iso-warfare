@@ -73,7 +73,9 @@ button { font: inherit; color: inherit; }
 .armory-item[aria-current="true"] .stencil { color: var(--accent); }
 .armory-item span { display: flex; flex-direction: column; gap: 1px; min-width: 0; color: var(--dim); font-size: 10.5px; line-height: 1.35; }
 .armory-item em { font-style: normal; color: var(--ink); font-size: 12px; }
-.stencil { font-family: var(--stencil), Impact, "Arial Narrow", sans-serif; font-weight: 800; font-size: 27px; line-height: 0.9; letter-spacing: 0.02em; color: var(--ink); white-space: nowrap; }
+.stencil { font-family: var(--stencil), Impact, "Arial Narrow", sans-serif; font-weight: 800; font-size: 27px; line-height: 0.9; letter-spacing: 0.02em; color: var(--ink); white-space: nowrap; min-width: 0; overflow: hidden; }
+/* a long designation (Mk 22 Mod 0) wraps onto two lines at a smaller size instead of running into the name beside it */
+.stencil[data-long] { white-space: normal; font-size: 19px; line-height: 0.95; overflow-wrap: anywhere; }
 .armory-none { margin: 14px 8px; color: var(--dim); }
 
 .specs { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
@@ -186,6 +188,15 @@ button { font: inherit; color: inherit; }
 .r-power { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: baseline; gap: 6px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); font-variant-numeric: tabular-nums; }
 .r-power b { font-size: 15px; font-weight: 600; }
 .r-power span { color: var(--dim); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+.r-dope { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); margin: 0; padding: 8px 12px 6px; min-width: 150px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); font-variant-numeric: tabular-nums; }
+.r-dope div { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 8px; align-items: center; padding-bottom: 5px; border-bottom: 1px solid var(--line); }
+.r-dope div:last-child { border-bottom: 0; padding-bottom: 0; }
+.r-dope dt { grid-column: 1 / -1; color: var(--dim); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+.r-dope dd { margin: 0; color: var(--dim); font-size: 11px; }
+.r-dope dd b { color: var(--ink); font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: 24px; line-height: 1; letter-spacing: 0.02em; }
+.r-dope span { display: flex; gap: 3px; justify-self: end; }
+.r-dope .r-wind { color: var(--accent); font-size: 20px; line-height: 1; }
+.range.aiming .r-dope { opacity: 0.85; }
 .r-call { position: absolute; left: 0; right: 0; top: 30%; text-align: center; font-family: var(--stencil), Impact, sans-serif; font-weight: 800; font-size: clamp(30px, 5vw, 56px); line-height: 1; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55); animation: r-call 2s ease-out forwards; }
 @keyframes r-call { 0% { opacity: 0; transform: translateY(6px); } 10% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; } }
 /* bottom row and the shot string */

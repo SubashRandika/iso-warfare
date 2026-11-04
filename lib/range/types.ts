@@ -39,9 +39,14 @@ export interface ForeGrip { at: THREE.Vector3; r: number; dir: THREE.Vector3 }
  * an optic: the eye looks along rear → front from `relief` behind the eyepiece; zoom is its power range. A 'scope'
  * (the default) is looked through: the view magnifies behind the tube's picture. A 'holo' (holographic or red-dot
  * sight) is unmagnified and looked over: only its reticle is drawn, collimated on the optic's axis, and the weapon stays
- * in view. `reticle`: a horseshoe with a fine crosshair (scopes) or a ring and dot (holographic sights and magnifiers).
+ * in view. `reticle`: a horseshoe with a fine crosshair (scopes), a ring and dot (holographic sights and magnifiers), or
+ * a first-focal-plane milliradian grid (precision scopes: its marks stay one milliradian apart at every power).
  */
-export interface OpticSight { rear: THREE.Vector3; front: THREE.Vector3; relief: number; zoom: [number, number]; kind?: 'scope' | 'holo'; reticle?: 'horseshoe' | 'holo' }
+export interface OpticSight { rear: THREE.Vector3; front: THREE.Vector3; relief: number; zoom: [number, number]; kind?: 'scope' | 'holo'; reticle?: 'horseshoe' | 'holo' | 'mil' }
+
+/** the cartridge in the chamber, for the long-distance range's flight: muzzle velocity (m/s), drag (dv/dx = −k·v, 1/m),
+ *  and the distance the scope is zeroed at (m) */
+export interface Ballistics { v0: number; k: number; zero: number }
 
 export interface RangeGun {
   name: string;                    // 'M17'
@@ -71,6 +76,16 @@ export interface RangeGun {
   laser?(): { from: THREE.Vector3; dir: THREE.Vector3 } | null;
   /** the weapon's own keys on the line, for the take-the-line card (one listed here replaces the card's entry for that key) */
   keys?: [string, string][];
+  /** where it is shot: the indoor hall (the default), or the long-distance field outdoors (steel to 1000 m, wind, flight) */
+  site?: 'hall' | 'field';
+  /** the round's flight (the field): without it the shot is a straight line along the sights */
+  ballistics?(): Ballistics;
+  /** an elevation turret the range dials (U up, J down, N back to zero), in milliradians; `set` turns the model's cap */
+  turret?: { step: number; max: number; set(mrad: number): void };
+  /** a bipod is down: rested on the bench, the hold is far steadier */
+  bipod?(): boolean;
+  /** a bolt action: R works the bolt while the magazine has rounds (a magazine change only when it is empty) */
+  bolt?: boolean;
   trigger(): TriggerResult;
   /** magazine out (it falls away) or a full one in */
   magazine(): void;

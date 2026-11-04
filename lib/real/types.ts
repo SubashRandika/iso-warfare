@@ -83,4 +83,9 @@ export interface StageOverride {
   bloomT: number;
   /** the sun stands in for the house lights: direction toward it, strength, colour, and the shadow box (half-size) */
   sun: { dir: THREE.Vector3; intensity: number; color: number; focus: THREE.Vector3; size: number };
+  /** an outdoor set instead: the real sky at this time of day lights it (its sun, sky light and exposure); `sun` then only
+   *  places the shadow box and `fog`, if given, replaces the haze */
+  time?: 'day' | 'dusk';
+  /** the stage's concrete ground (false when the set brings its own terrain) */
+  ground?: boolean;
 }

@@ -32,7 +32,7 @@ export default function RangeHud({ h }: { h: Hud }) {
     <div className={`range${h.aiming ? ' aiming' : ''}`}>
       <div className="r-lane">
         <b>Lane {h.lane}</b>
-        <span>{h.gun} · {h.calibre}{h.lowLight ? ' · low light' : ''}</span>
+        <span>{h.gun} · {h.calibre}{h.site === 'field' ? ' · 1000 m field' : h.lowLight ? ' · low light' : ''}</span>
       </div>
 
       <div className={`r-timer${live ? ' live' : ''}`} role="timer" aria-label={label}>
@@ -47,12 +47,20 @@ export default function RangeHud({ h }: { h: Hud }) {
       {h.hit.seq > 0 && <i key={`hit${h.hit.seq}`} className={`r-mark z-${h.hit.zone}`} aria-hidden="true" />}
       {h.breath !== null && <i className="r-breath" style={{ ['--b' as string]: h.breath }} aria-hidden="true" />}
       {h.power !== null && <div className="r-power" aria-label={`Optic at ${h.power} power`}><b>{h.power.toFixed(1)}×</b><span>wheel</span></div>}
+      {h.dope && (
+        <dl className="r-dope" aria-label="Firing data">
+          <div><dt>Elevation</dt><dd><b>{h.dope.elev.toFixed(1)}</b> mil</dd><span><kbd>U</kbd><kbd>J</kbd><kbd>N</kbd></span></div>
+          <div><dt>Wind</dt><dd><b>{Math.abs(h.dope.wind).toFixed(1)}</b> m/s</dd>
+            <span className="r-wind" aria-label={h.dope.wind > 0 ? 'from the left' : 'from the right'}>{h.dope.wind > 0 ? '→' : '←'}</span></div>
+          <div><dt>Target</dt><dd><b>{h.dope.dist ?? '—'}</b>{h.dope.dist ? ' m' : ''}</dd></div>
+        </dl>
+      )}
       {h.call.text && <div key={`call${h.call.seq}`} className="r-call" role="status">{h.call.text}</div>}
 
       <div className="r-score" aria-label="Score">
         <span className="r-k">Score</span>
         <b>{h.score}</b>
-        <span className="r-sub">{h.hits}/{h.presented} hit · {h.shots ? Math.round(h.hits / h.shots * 100) : 0}% · {h.noShoot} no-shoot</span>
+        <span className="r-sub">{h.hits}/{h.presented} hit · {h.shots ? Math.round(h.hits / h.shots * 100) : 0}%{h.site === 'field' ? ' · a point per 100 m' : ` · ${h.noShoot} no-shoot`}</span>
       </div>
 
       {shotsDesc.length > 0 && (
@@ -90,16 +98,25 @@ export default function RangeHud({ h }: { h: Hud }) {
 
       {r && h.phase === 'done' && (
         <div className="r-card r-result" aria-live="polite">
-          <span className="r-k">Drill complete · {h.par} s</span>
+          <span className="r-k">{h.site === 'field' ? 'Course complete' : 'Drill complete'} · {h.par} s</span>
           <b className="r-big">{r.score}</b>
           <p>{r.newBest ? 'New best on this lane' : `Best ${r.best}`}</p>
-          <dl>
-            <div><dt>Targets hit</dt><dd>{r.hits} of {r.presented}</dd></div>
-            <div><dt>Accuracy</dt><dd>{r.accuracy}% of {r.shots} shots</dd></div>
-            <div><dt>Zones</dt><dd>A {r.zones.A} · C {r.zones.C} · D {r.zones.D}</dd></div>
-            <div><dt>No-shoots hit</dt><dd>{r.noShoot}</dd></div>
-            <div><dt>Mean reaction</dt><dd>{r.reaction ? `${r.reaction.toFixed(2)} s` : '—'}</dd></div>
-          </dl>
+          {h.site === 'field' ? (
+            <dl>
+              <div><dt>Plates hit</dt><dd>{r.hits} of {r.presented} called</dd></div>
+              <div><dt>Accuracy</dt><dd>{r.accuracy}% of {r.shots} rounds</dd></div>
+              <div><dt>Longest hit</dt><dd>{r.longest ? `${r.longest} m` : '—'}</dd></div>
+              <div><dt>Mean time to a hit</dt><dd>{r.reaction ? `${r.reaction.toFixed(1)} s` : '—'}</dd></div>
+            </dl>
+          ) : (
+            <dl>
+              <div><dt>Targets hit</dt><dd>{r.hits} of {r.presented}</dd></div>
+              <div><dt>Accuracy</dt><dd>{r.accuracy}% of {r.shots} shots</dd></div>
+              <div><dt>Zones</dt><dd>A {r.zones.A} · C {r.zones.C} · D {r.zones.D}</dd></div>
+              <div><dt>No-shoots hit</dt><dd>{r.noShoot}</dd></div>
+              <div><dt>Mean reaction</dt><dd>{r.reaction ? `${r.reaction.toFixed(2)} s` : '—'}</dd></div>
+            </dl>
+          )}
           <p className="r-again"><kbd>Space</kbd> run the drill again</p>
         </div>
       )}

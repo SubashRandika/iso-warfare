@@ -16,6 +16,13 @@
 // On automatic it keeps firing while the trigger is held. Free practice stands one target up at a time until it is hit; the
 // drill (45 s after a shot-timer beep) pops targets at random across 5–25 m for shorter and shorter exposures, a few
 // of them no-shoots, and scores the hits (A 5, C 3, D 1, no-shoot −10).
+// A precision rifle (RangeGun.site 'field') is taken to the long-distance range outdoors instead (lib/range/field.ts):
+// steel from 100 to 1000 m under the real sky, seated at the bench with the bipod rested. There the round flies: it
+// leaves at the cartridge's muzzle velocity, slows with drag, drops, drifts with the wind (which the flags show), and lands
+// after its time of flight; the scope is zeroed at 100 m and its turret dials elevation (U, J, N) in milliradians, the
+// reticle's marks are milliradians at every power. The spotter calls the plate to shoot, and a hit (with the ring of the
+// steel coming back late) or where a miss went, in milliradians. The drill calls random plates for two minutes and
+// scores a hit by its distance (a point per 100 m).
 // Performance: the range is built as soon as the real view is up and its shaders compile off the main thread while
 // the weapon still lies on its bench; taking the line waits for that rather than stall on a compile. The hall and
 // targets (per bench size) and the hands (per weapon, meshed a little each frame) are kept for the session, and the renderer
@@ -26,15 +33,16 @@ import type { Engine, EyeSpec } from '../iso/engine';
 import type { Sound } from '../core/sound';
 import type { StageOverride } from '../real/types';
 import { createParticles } from '../real/smoke';
-import { buildChamber, rangeLayout, type Surface } from './chamber';
-import { createTargets, POINTS, type Target } from './targets';
+import { buildChamber, rangeLayout, type Chamber, type Surface } from './chamber';
+import { buildField, type Field } from './field';
+import { createTargets, POINTS, type Target, type Targets } from './targets';
 import { buildHands } from './hands';
 import type { RangeHud, RangeResult, ShotRecord, ShotZone } from './hud';
 import type { BenchSpec, RangeGun } from './types';
 import { MODELS } from '../catalog';
 
-const DRILL = 45, ZERO = 15, HIP_CONVERGE = 9;
-const EYE = 1.62, KNEEL = 1.06;
+const DRILL = 45, DRILL_FIELD = 120, ZERO = 15, HIP_CONVERGE = 9;
+const EYE = 1.62, KNEEL = 1.06, SEATED = 1.32;
 const FOV = 70, FOV_AIM = 50;
 const DEG = Math.PI / 180;
 const clamp = THREE.MathUtils.clamp;
@@ -66,8 +74,9 @@ function createHoles(max: number) {
   };
 }
 
-/** the hall and its targets for each bench size: built once and kept for the session */
-const kits = new Map<string, { hall: ReturnType<typeof buildChamber>; T: ReturnType<typeof createTargets> }>();
+/** the hall (or the field) and its targets for each bench size: built once and kept for the session */
+type Site = Pick<Chamber, 'group' | 'colliders' | 'lamps' | 'dispose'>;
+const kits = new Map<string, { hall: Site; T: Targets; field: Field | null }>();
 /** the weapons that have a range, in the catalogue's order (keys 1, 2 …) */
 const WEAPONS = MODELS.filter(m => m.actions.some(a => a.id === 'range')).map(m => ({ id: m.id, name: m.tab }));
 /** where the shooter stood, handed from one weapon to the next on a weapon change (x from the lane's centre, z from
@@ -78,10 +87,14 @@ let lastWeapon: string | null = null;
 export interface RangeNav { id: string; open(id: string): void }
 
 export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSpec, nav?: RangeNav) {
-  const L = rangeLayout(bench), kitKey = [bench.w, bench.d, bench.cx, bench.cz, bench.height ?? 0.9].join();
+  const site = gun.site ?? 'hall', L = rangeLayout(bench), kitKey = [site, bench.w, bench.d, bench.cx, bench.cz, bench.height ?? 0.9].join();
   let kit = kits.get(kitKey);
-  if (!kit) { const hall = buildChamber(L); kit = { hall, T: createTargets(L, hall.shield) }; kits.set(kitKey, kit); }
-  const { hall, T } = kit;
+  if (!kit) {
+    if (site === 'field') { const f = buildField(L); kit = { hall: f.hall, T: f.T, field: f }; }
+    else { const hall = buildChamber(L); kit = { hall, T: createTargets(L, hall.shield), field: null }; }
+    kits.set(kitKey, kit);
+  }
+  const { hall, T } = kit, field = kit.field, drill = field ? DRILL_FIELD : DRILL;
   const hands = buildHands(gun.name, gun.grip, gun.kind === 'rifle' ? gun.fore : undefined); gun.root.add(hands.group);
   const fx = createParticles(E, 900, 320);
   const holes = createHoles(240);
@@ -96,7 +109,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     ready = true;
     if (wantIn) { wantIn = false; enter(); }
   });
-  const ray = new THREE.Raycaster(); ray.far = 80;
+  const ray = new THREE.Raycaster(); ray.far = field ? field.far : 80;
 
   // ── lighting: house lights up (light theme), or a low-light range lit by the muzzle flash (dark theme) ──
   const focus = new THREE.Vector3(L.lane, L.floor, L.line + 10);
@@ -107,6 +120,11 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   // low light: only the floods over the target line are left on, dimmed; the hall falls away into the dark
   const LOW: StageOverride = { sky: false, env: 'room', envI: 0.05, exposure: 1.2, fog: { color: 0x07080a, density: 0.016 }, bloom: 0.3, bloomT: 4,
     sun: { dir: new THREE.Vector3(-0.1, 1, 0.45), intensity: 0.32, color: 0xb4c2e0, focus, size: 19 } };
+  // outdoors: the sky at midday (light theme) or at dusk (dark), the stage's concrete swapped for the field's own ground,
+  // and a thin haze that leaves the 1000 m steel clear
+  const FIELD_DAY: StageOverride = { sky: true, env: 'sky', envI: 0, exposure: 0, fog: { color: 0xc6d0da, density: 0.00042 }, bloom: 0, bloomT: 0,
+    sun: { dir: new THREE.Vector3(0, 1, 0), intensity: 0, color: 0xffffff, focus: new THREE.Vector3(L.lane, L.floor, L.line - 2), size: 16 }, time: 'day', ground: false };
+  const FIELD_DUSK: StageOverride = { ...FIELD_DAY, fog: { color: 0x9a8b82, density: 0.0006 }, time: 'dusk' };
   const low = () => E.theme !== 'light';
 
   // ── the shooter ──
@@ -120,16 +138,20 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   let pullAt = -1;                                           // the index finger presses the trigger
   let captured = false, refused = false;
   let sec = 0;
+  // the field: the scope's elevation turret (mrad), the wind (m/s across the range, + from the shooter's left), the
+  // farthest hit
+  let dial = 0, windBase = 0, longest = 0;
+  const windF = new THREE.Vector3();
 
   // ── weapon poses in camera space (x right, y up, −z ahead), from whichever sight is in use (irons or the optic) ──
-  const P = { rear: gun.sight.rear, front: gun.sight.front, optic: false, holo: false, ring: false, zoom: [1, 1] as [number, number], qAds: new THREE.Quaternion(), pAds: new THREE.Vector3(), qHip: new THREE.Quaternion(), pHip: new THREE.Vector3() };
+  const P = { rear: gun.sight.rear, front: gun.sight.front, optic: false, holo: false, ring: false, mil: false, zoom: [1, 1] as [number, number], qAds: new THREE.Quaternion(), pAds: new THREE.Vector3(), qHip: new THREE.Quaternion(), pHip: new THREE.Vector3() };
   let poseKey = '';
   function sightPoses() {
     const o = gun.optic?.() ?? null, key = o ? `${o.kind ?? 'scope'}:${o.rear.z.toFixed(4)}` : 'irons';
     if (key === poseKey) return P;
     poseKey = key;
     P.rear = o ? o.rear : gun.sight.rear; P.front = o ? o.front : gun.sight.front; P.optic = !!o; P.zoom = o ? o.zoom : [1, 1];
-    P.holo = o?.kind === 'holo'; P.ring = o?.reticle === 'holo';
+    P.holo = o?.kind === 'holo'; P.ring = o?.reticle === 'holo'; P.mil = o?.reticle === 'mil';
     power = clamp(power, P.zoom[0], P.zoom[1]);
     const relief = o ? o.relief : gun.relief;
     const qLevel = new THREE.Quaternion().setFromUnitVectors(P.front.clone().sub(P.rear).normalize(), new THREE.Vector3(0, 0, 1));
@@ -144,22 +166,37 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   // holographic sight only its ring and dot (uTube 0), sized by uRet (on screen a reticle grows with the power) ──
   let power = 4, scoped = false;
   const scopeMat = new THREE.ShaderMaterial({
-    uniforms: { uAspect: { value: 1 }, uC: { value: new THREE.Vector2() }, uR: { value: 0.47 }, uIllum: { value: 3 }, uTube: { value: 1 }, uRing: { value: 0 }, uRet: { value: 1 } },
+    uniforms: { uAspect: { value: 1 }, uC: { value: new THREE.Vector2() }, uR: { value: 0.47 }, uIllum: { value: 3 }, uTube: { value: 1 }, uRing: { value: 0 }, uRet: { value: 1 }, uMil: { value: 0 } },
     vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
-    fragmentShader: `uniform float uAspect, uR, uIllum, uTube, uRing, uRet; uniform vec2 uC; varying vec2 vUv;
+    fragmentShader: `uniform float uAspect, uR, uIllum, uTube, uRing, uRet, uMil; uniform vec2 uC; varying vec2 vUv;
       void main() {
         vec2 p = (vUv - 0.5 - uC) * vec2(uAspect, 1.0);
         float r = length(p), inside = uTube > 0.5 ? smoothstep(uR, uR - 0.01, r) : 1.0;
         float rim = smoothstep(uR * 0.7, uR, r) * 0.6 * uTube;                       // the eyebox's dark edge
         float px = fwidth(p.x) * 1.2;
-        float cross = uTube * (1.0 - uRing);                                          // a scope's own crosshair
+        float cross = uTube * (1.0 - uRing) * step(uMil, 0.0);                        // a scope's own crosshair
         float thick = cross * (step(abs(p.y), 0.0055) * step(uR * 0.42, abs(p.x)) + step(abs(p.x), 0.0055) * step(uR * 0.42, -p.y));
         float fine = cross * ((1.0 - smoothstep(0.0, px, abs(p.y))) * step(abs(p.x), uR * 0.42) * step(0.04, abs(p.x))
                    + (1.0 - smoothstep(0.0, px, abs(p.x))) * step(-p.y, uR * 0.42) * step(0.04, -p.y));
         float rr = 0.03 * uRet, w = max(0.0012 * uRet, px);
-        float shoe = (1.0 - smoothstep(w, w + px, abs(r - rr))) * mix(step(-0.016 * uRet, p.y), 1.0, uRing);   // horseshoe open below, or a whole ring
+        float shoe = (1.0 - smoothstep(w, w + px, abs(r - rr))) * mix(step(-0.016 * uRet, p.y), 1.0, uRing) * step(uMil, 0.0);   // horseshoe open below, or a whole ring
+        // a first-focal-plane milliradian grid (uMil: one milliradian in screen heights): fine stadia through the centre,
+        // a mark every mil (longer every fifth), half-mil marks below for holdover, heavy posts beyond ten mils
+        float grid = 0.0;
+        if (uMil > 0.0) {
+          float ax = abs(p.x), ay = abs(p.y), lim = uMil * 10.0;
+          float stadia = (1.0 - smoothstep(0.0, px, ay)) * step(ax, uR) + (1.0 - smoothstep(0.0, px, ax)) * step(ay, uR);
+          float posts = step(ay, 0.0035) * step(lim, ax) + step(ax, 0.0035) * step(lim, ay);
+          float mx = abs(fract(p.x / uMil + 0.5) - 0.5) * uMil, my = abs(fract(p.y / uMil + 0.5) - 0.5) * uMil;
+          float fx = step(abs(fract(p.x / (uMil * 5.0) + 0.5) - 0.5), 0.1), fy = step(abs(fract(p.y / (uMil * 5.0) + 0.5) - 0.5), 0.1);
+          float tx = (1.0 - smoothstep(0.0, px * 1.3, mx)) * step(ay, uMil * mix(0.18, 0.4, fx)) * step(ax, lim);
+          float ty = (1.0 - smoothstep(0.0, px * 1.3, my)) * step(ax, uMil * mix(0.18, 0.4, fy)) * step(ay, lim);
+          float hy = abs(fract(p.y / (uMil * 0.5) + 0.5) - 0.5) * uMil * 0.5;
+          float th = (1.0 - smoothstep(0.0, px, hy)) * step(ax, uMil * 0.09) * step(p.y, 0.0) * step(ay, lim);
+          grid = clamp(stadia + posts + tx + ty + th, 0.0, 1.0);
+        }
         float dotc = 1.0 - smoothstep(0.0022 * min(uRet, 1.0), 0.0022 * min(uRet, 1.0) + px, r);
-        float black = clamp(thick + fine, 0.0, 1.0) * inside, red = clamp(shoe + dotc, 0.0, 1.0) * inside;
+        float black = clamp(thick + fine + grid, 0.0, 1.0) * inside, red = clamp(shoe + dotc, 0.0, 1.0) * inside;
         float a = uTube > 0.5 ? max(max(1.0 - inside, rim * inside), max(black, red)) : red;
         vec3 col = vec3(1.0, 0.03, 0.015) * uIllum * red;
         gl_FragColor = vec4(col, a);
@@ -199,11 +236,18 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   function roomBus() {
     const c = snd.audio; if (!c || !snd.out || !snd.enabled) return null;
     if (!roomIn) {
-      const len = Math.floor(c.sampleRate * 1.3), ir = c.createBuffer(2, len, c.sampleRate);
+      const len = Math.floor(c.sampleRate * (field ? 3.2 : 1.3)), ir = c.createBuffer(2, len, c.sampleRate);
       for (let ch = 0; ch < 2; ch++) {
         const d = ir.getChannelData(ch); let lp = 0;
-        for (let i = 0; i < len; i++) { const t = i / c.sampleRate; lp += (Math.random() * 2 - 1 - lp) * 0.35; d[i] = lp * Math.exp(-t * 4.2) * (t < 0.004 ? t / 0.004 : 1); }
-        for (const [ms, g] of [[9, 0.8], [17, 0.6], [26, 0.5], [41, 0.35], [63, 0.25]]) d[Math.floor(ms / 1000 * c.sampleRate) + ch * 7] += g;   // walls, ceiling, booths
+        if (field) {                                       // outdoors: no room, only echoes off the shelter, the trees and the hills
+          for (const [ms, g, w] of [[38, 0.35, 0.02], [420, 0.2, 0.09], [1150, 0.14, 0.16], [2100, 0.08, 0.24]]) {
+            const o = Math.floor(ms / 1000 * c.sampleRate) + ch * 211;
+            for (let i = 0; i < w * c.sampleRate && o + i < len; i++) { lp += (Math.random() * 2 - 1 - lp) * 0.08; d[o + i] += lp * g * 3 * Math.exp(-i / c.sampleRate / (w * 0.4)); }
+          }
+        } else {
+          for (let i = 0; i < len; i++) { const t = i / c.sampleRate; lp += (Math.random() * 2 - 1 - lp) * 0.35; d[i] = lp * Math.exp(-t * 4.2) * (t < 0.004 ? t / 0.004 : 1); }
+          for (const [ms, g] of [[9, 0.8], [17, 0.6], [26, 0.5], [41, 0.35], [63, 0.25]]) d[Math.floor(ms / 1000 * c.sampleRate) + ch * 7] += g;   // walls, ceiling, booths
+        }
       }
       const conv = c.createConvolver(); conv.buffer = ir;
       roomIn = c.createGain(); const wet = c.createGain(); wet.gain.value = 0.5;
@@ -217,9 +261,9 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     f.type = 'lowpass'; f.frequency.value = 3600;
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.2 * loud, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
     src.connect(f).connect(g).connect(bus); src.start(t); src.stop(t + 0.4);
-    snd.tone(64, 0.42, 0.24 * loud, { type: 'sine', to: 32 });     // the hall's boom
+    if (!field) snd.tone(64, 0.42, 0.24 * loud, { type: 'sine', to: 32 });     // the hall's boom
   }
-  const att = (d: number) => 1 / (1 + d / 9);
+  const att = (d: number) => field ? 1 / (1 + d / 160) : 1 / (1 + d / 9);
   const beep = () => { snd.tone(3000, 0.32, 0.075, { type: 'square' }); snd.tone(3000, 0.32, 0.04, { type: 'sine' }); };
 
   // ── the target line ──
@@ -231,9 +275,11 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   function popOne(kind: 'hostile' | 'ns', until: number) {
     const free = T.list.filter(t => t.state === 'down' && t.i !== lastPopped);
     if (!free.length) return;
-    const t = free[Math.floor(Math.random() * free.length)];
+    // the field's free practice works out along the line, 100 m at a time; otherwise any target at random
+    const t = field && phase === 'free' ? T.list[(lastPopped + 1) % T.list.length] : free[Math.floor(Math.random() * free.length)];
     T.pop(t, kind, sec, until); lastPopped = t.i;
     if (kind === 'hostile' && phase === 'live') stats.presented++;
+    if (field) { call(`Target · ${t.dist} m`); return; }
     const a = att(t.dist + 2);                                // the lifter's motor and its stop
     snd.tone(150, 0.26, 0.03 * a, { type: 'sawtooth', to: 230 }); snd.click(0.3, 0.5);
   }
@@ -243,7 +289,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     if (phase === 'setup' || reload?.ready) return;
     T.list.forEach(t => T.drop(t, sec));
     Object.assign(stats, { score: 0, shots: 0, hits: 0, presented: 0, noShoot: 0, zones: { A: 0, C: 0, D: 0 }, reactions: [] });
-    shots = []; shotN = 0; result = null; phase = 'standby'; call('Shooter ready?');
+    shots = []; shotN = 0; result = null; longest = 0; phase = 'standby'; call('Shooter ready?');
     beepAt = sec + 2.2 + Math.random() * 1.6;
     later(1.1, () => { if (phase === 'standby') call('Standby'); });
   }
@@ -255,7 +301,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     result = {
       score: stats.score, best: Math.max(best, stats.score), newBest, shots: stats.shots, hits: stats.hits, presented: stats.presented, noShoot: stats.noShoot,
       zones: { ...stats.zones }, accuracy: stats.shots ? Math.round(stats.hits / stats.shots * 100) : 0,
-      reaction: r.length ? Math.round(r.reduce((a, b) => a + b, 0) / r.length * 100) / 100 : 0,
+      reaction: r.length ? Math.round(r.reduce((a, b) => a + b, 0) / r.length * 100) / 100 : 0, longest,
     };
     snd.chime(true);
   }
@@ -273,12 +319,13 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     if (r === 'shot') shot();
     else if (r === 'safe') call(gun.state().mode ? 'Safe · X selector' : 'Safety on · X');
     else if (r === 'locked') call(gun.kind === 'rifle' ? 'Bolt locked · R' : 'Slide locked · R');
-    else if (r === 'click') call(gun.state().rounds > 0 && gun.state().magIn ? 'Rack it · R' : 'Empty · R');
+    else if (r === 'click') call(gun.state().rounds > 0 && gun.state().magIn ? (gun.bolt ? 'Work the bolt · R' : 'Rack it · R') : 'Empty · R');
   }
   function shot() {
     gun.root.updateMatrixWorld(true);
     const S = sightPoses(), rw = gun.root.localToWorld(tmpA.copy(S.rear)), fw = gun.root.localToWorld(tmpB.copy(S.front)), mw = gun.root.localToWorld(tmpC.copy(gun.muzzle));
     const sd = fw.sub(rw).normalize();
+    if (field) { flight(mw.clone(), sd.clone(), S); afterShot(mw, sd); return; }
     const dir = rw.addScaledVector(sd, ZERO).sub(mw).normalize();
     // mechanical spread (about 2 MOA), more from the hip and on the move
     const spread = 0.0006 + (1 - aimK) * 0.0035 + Math.min(1, me.vel.length() / 2) * 0.004;
@@ -304,6 +351,9 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     if (scoring) stats.shots++;
     shots.push({ n: ++shotN, split: Math.round((sec - lastShot) * 100) / 100, zone, dist }); if (shots.length > 40) shots.shift();
     lastShot = sec;
+    afterShot(mw, dir);
+  }
+  function afterShot(mw: THREE.Vector3, dir: THREE.Vector3) {
     // recoil: the muzzle flips and the gun drives back into the hands; the eye follows a little and recovers most of it
     const r = 0.85 + Math.random() * 0.3, hip = 1 + (1 - aimK) * 0.35;
     kick.vRise += gun.recoil.rise * 30 * r * hip; kick.vPush += gun.recoil.push * 30 * r;
@@ -313,6 +363,14 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     for (let i = 0; i < 3; i++) fx.smoke.emit(mw.clone().addScaledVector(dir, 0.02 + i * 0.03), { v: dir.clone().multiplyScalar(0.6 + i * 0.3).add(new THREE.Vector3(0, 0.1, 0)), s0: 0.03, s1: 0.3, life: 1.5 + Math.random(), c: [0.72, 0.72, 0.7], a: 0.22, drag: 2.4, rise: 0.22 });
   }
   function struck(t: Target, zone: ShotZone) {
+    if (field) {                                               // a plate: the called one counts, and the next is called
+      if (t.state !== 'up') return;
+      t.until = sec + 0.7;
+      if (phase !== 'live') return;
+      stats.score += Math.round(t.dist / 100); stats.hits++; longest = Math.max(longest, t.dist);
+      stats.reactions.push(Math.max(0, sec - t.upAt));
+      return;
+    }
     t.until = sec + 0.12;                                      // knocked down a moment after the hit
     const a = att(t.dist), delay = t.dist / 370 + t.dist / 343;
     snd.burst(0.05, 0.2 * a, { freq: 700, q: 1.1, at: delay }); snd.tone(170, 0.07, 0.07 * a, { type: 'triangle', at: delay });
@@ -324,19 +382,87 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   /** dust, chips and sparks where a round strikes, and the sound coming back from there */
   function impact(p: THREE.Vector3, n: THREE.Vector3, dir: THREE.Vector3, s: Surface, d: number) {
     const rnd = () => new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
-    const a = att(d), delay = d / 370 + d / 343;
+    // on the field the round has already flown (this runs when it lands): only the sound's own way back is late, and the
+    // dust and sparks grow with the distance so that they read in the scope
+    const a = att(d), delay = field ? d / 343 : d / 370 + d / 343, big = field ? 1 + d / 140 : 1;
     const dust = (c: readonly [number, number, number], k: number, size: number) => {
-      for (let i = 0; i < k; i++) fx.smoke.emit(p.clone().addScaledVector(n, 0.02), { v: n.clone().multiplyScalar(0.5 + Math.random() * 0.8).add(rnd().multiplyScalar(0.5)), s0: size * 0.3, s1: size * (1 + Math.random()), life: 0.7 + Math.random() * 0.8, c, a: 0.75, drag: 3.2, rise: 0.04 });
+      for (let i = 0; i < k; i++) fx.smoke.emit(p.clone().addScaledVector(n, 0.02 * big), { v: n.clone().multiplyScalar(0.5 + Math.random() * 0.8).add(rnd().multiplyScalar(0.5)).multiplyScalar(Math.sqrt(big)), s0: size * 0.3 * big, s1: size * (1 + Math.random()) * big, life: 0.7 + Math.random() * 0.8 + (big - 1) * 0.12, c, a: 0.75, drag: 3.2, rise: 0.04 });
     };
     if (s === 'steel') {
       const out = dir.clone().reflect(n);
-      for (let i = 0; i < 10; i++) fx.fire.emit(p.clone(), { v: out.clone().multiplyScalar(2 + Math.random() * 4).add(rnd().multiplyScalar(3)), s0: 0.022, s1: 0.006, life: 0.1 + Math.random() * 0.16, c: [9, 5.5, 2.2], c1: [2, 0.4, 0.05], drag: 2, rise: -9 });
+      for (let i = 0; i < 10; i++) fx.fire.emit(p.clone(), { v: out.clone().multiplyScalar(2 + Math.random() * 4).add(rnd().multiplyScalar(3)), s0: 0.022 * big, s1: 0.006 * big, life: 0.1 + Math.random() * 0.16, c: [9, 5.5, 2.2], c1: [2, 0.4, 0.05], drag: 2, rise: -9 });
       dust([0.5, 0.5, 0.48], 2, 0.12);
-      snd.tone(2100 + Math.random() * 700, 0.9, 0.11 * a, { at: delay }); snd.tone(3500, 0.45, 0.04 * a, { at: delay }); snd.burst(0.03, 0.12 * a, { freq: 4000, at: delay });
+      snd.tone(2100 + Math.random() * 700, field ? 1.4 : 0.9, 0.11 * a, { at: delay }); snd.tone(3500, 0.45, 0.04 * a, { at: delay }); snd.burst(0.03, 0.12 * a, { freq: 4000, at: delay });
     } else if (s === 'rubber') { dust([0.1, 0.1, 0.1], 3, 0.16); snd.burst(0.05, 0.08 * a, { type: 'lowpass', freq: 500, at: delay }); }
+    else if (s === 'dirt') { dust([0.42, 0.36, 0.28], 6, 0.3); }
     else if (s === 'paper') { dust([0.55, 0.43, 0.3], 2, 0.06); }
     else if (s === 'concrete') { dust([0.56, 0.56, 0.54], 5, 0.22); snd.burst(0.04, 0.14 * a, { freq: 2500, q: 0.7, at: delay }); }
     else { dust([0.3, 0.3, 0.3], 3, 0.12); snd.burst(0.04, 0.08 * a, { freq: 1200, at: delay }); }
+  }
+
+  // ── the field: the round's flight (drag, gravity, the wind), stepped until it meets the ground, a plate or a structure ──
+  const G = 9.81, STEP = 0.004;
+  const fa = new THREE.Vector3(), fv = new THREE.Vector3(), fp = new THREE.Vector3(), fq = new THREE.Vector3(), rel = new THREE.Vector3();
+  /** the bore's angle above the line of sight that puts the round back on it at the zero distance (h: sight over bore) */
+  function zeroAngle(v0: number, k: number, zero: number, h: number) {
+    let x = 0, y = 0, vx = v0, vy = 0;
+    while (x < zero) { const sp = Math.hypot(vx, vy); vx += -k * sp * vx * STEP; vy += (-k * sp * vy - G) * STEP; x += vx * STEP; y += vy * STEP; }
+    return (h - y) / zero;
+  }
+  function flight(mw: THREE.Vector3, sd: THREE.Vector3, S: ReturnType<typeof sightPoses>) {
+    const B = gun.ballistics?.() ?? { v0: 850, k: 0.0005, zero: 100 };
+    const up = tmpA.set(0, 1, 0).transformDirection(gun.root.matrixWorld), side = tmpB.set(1, 0, 0).transformDirection(gun.root.matrixWorld);
+    const lift = zeroAngle(B.v0, B.k, B.zero, S.rear.y - gun.muzzle.y) + dial / 1000;
+    // the rifle and cartridge's own dispersion (about half a minute of angle), more off the rest and on the move
+    const spread = 0.00008 + (1 - aimK) * 0.003 + Math.min(1, me.vel.length() / 2) * 0.004;
+    const dir = sd.addScaledVector(up, lift + (Math.random() - 0.5) * 2 * spread).addScaledVector(side, (Math.random() - 0.5) * 2 * spread).normalize();
+    const called = T.list.find(t => t.state === 'up') ?? null;
+    fp.copy(mw); fv.copy(dir).multiplyScalar(B.v0);
+    let t = 0, cross: THREE.Vector3 | null = null;
+    let land: null | { at: THREE.Vector3; n: THREE.Vector3; s: Surface; target: Target | null; t: number } = null;
+    while (t < 3.4 && !land) {
+      rel.copy(fv).sub(windF); const sp = rel.length();
+      fa.copy(rel).multiplyScalar(-B.k * sp); fa.y -= G;
+      fv.addScaledVector(fa, STEP); fq.copy(fp).addScaledVector(fv, STEP); t += STEP;
+      if (called && !cross && fp.z < called.z && fq.z >= called.z) cross = fp.clone().lerp(fq, (called.z - fp.z) / (fq.z - fp.z));
+      const seg = fq.distanceTo(fp);
+      ray.set(fp, tmpC.copy(fq).sub(fp).divideScalar(seg)); ray.far = seg;
+      const h = ray.intersectObjects(colliders, false).find(i => { const tg = i.object.userData.target as Target | undefined; return !tg || T.exposed(tg); });
+      if (h) {
+        const n = (h.face?.normal ?? tmpC.clone().negate()).clone().transformDirection(h.object.matrixWorld); if (n.dot(fv) > 0) n.negate();
+        const tg = (h.object.userData.target as Target | undefined) ?? null;
+        land = { at: h.point.clone(), n, s: tg ? 'steel' : (h.object.userData.surface ?? 'concrete') as Surface, target: tg, t: t - STEP + STEP * h.distance / seg };
+      } else if (fq.y <= field!.groundY(fq.x, fq.z)) {
+        let a = 0, b = 1;                                      // where the segment meets the ground
+        for (let i = 0; i < 8; i++) { const m = (a + b) / 2, q = fp.clone().lerp(fq, m); if (q.y <= field!.groundY(q.x, q.z)) b = m; else a = m; }
+        const at = fp.clone().lerp(fq, b); at.y = field!.groundY(at.x, at.z);
+        land = { at, n: new THREE.Vector3(0, 1, 0), s: 'dirt', target: null, t: t - STEP + STEP * b };
+      }
+      fp.copy(fq);
+    }
+    const scoring = phase === 'live', split = Math.round((sec - lastShot) * 100) / 100, n = ++shotN;
+    if (scoring) stats.shots++;
+    lastShot = sec;
+    const bullet = fv.clone().normalize();
+    later(land ? land.t : 2, () => {
+      let zone: ShotZone = 'M', dist = 0;
+      if (land) {
+        dist = Math.round(land.at.distanceTo(mw));
+        impact(land.at, land.n, bullet, land.s, dist);
+        if (land.target) { zone = T.hit(land.target, land.at); struck(land.target, zone); hit = { seq: hit.seq + 1, zone }; }
+        else if (land.s !== 'dirt') holes.add(land.at, land.n, 0.02);
+      }
+      shots.push({ n, split, zone, dist }); if (shots.length > 40) shots.shift();
+      // the spotter: a hit on the called plate (or another), or where the round went past the called one, in mils
+      if (land?.target) call(land.target === called ? `Hit · ${land.target.dist} m` : `Hit · the ${land.target.dist} m plate`);
+      else if (called && cross) {
+        const c = (T as Targets & { centre?(t: Target): THREE.Vector3 }).centre?.(called) ?? new THREE.Vector3(called.x, cross.y, called.z);
+        const my = (cross.y - c.y) / called.dist * 1000, mx = (cross.x - c.x) / called.dist * 1000;
+        const parts = [Math.abs(my) >= 0.1 ? `${Math.abs(my).toFixed(1)} ${my > 0 ? 'high' : 'low'}` : '', Math.abs(mx) >= 0.1 ? `${Math.abs(mx).toFixed(1)} ${mx > 0 ? 'left' : 'right'}` : ''].filter(Boolean);
+        call(`Miss · ${parts.join(' · ') || 'edge'} (mil)`);
+      } else if (called && land) call(`Miss · short, ${dist} m`);
+      else if (!land) call('Miss · over');
+    });
   }
 
   // ── projectiles the weapon flies itself (a 40 mm grenade): what a segment of its path meets, and its burst ──
@@ -395,7 +521,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   // ── the eye and the weapon in the hands ──
   const eyePos = new THREE.Vector3(), eyeEuler = new THREE.Euler(0, 0, 0, 'YXZ'), eyeQ = new THREE.Quaternion();
   function shooterEye(pos: THREE.Vector3, quat: THREE.Quaternion) {
-    const h = THREE.MathUtils.lerp(EYE, KNEEL, smooth(me.kneel)), sp = Math.min(1, me.vel.length() / 2);
+    const h = field ? THREE.MathUtils.lerp(SEATED, EYE, smooth(me.kneel)) : THREE.MathUtils.lerp(EYE, KNEEL, smooth(me.kneel)), sp = Math.min(1, me.vel.length() / 2);
     pos.set(me.pos.x + Math.cos(me.bob) * 0.012 * sp, L.floor + h + Math.abs(Math.sin(me.bob)) * 0.018 * sp, me.pos.z);
     quat.setFromEuler(eyeEuler.set(me.pitch + kick.cam - reloadK() * 0.12, me.yaw + Math.PI, 0));
   }
@@ -405,7 +531,8 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     gp.lerpVectors(S.pHip, S.pAds, k); gq.slerpQuaternions(S.qHip, S.qAds, k);
     // the hold's wobble and breathing, the recoil flip and the reload tilt, all about the grip
     const steady = holding ? 0.2 : 1, sp = Math.min(1, me.vel.length() / 2);
-    const A = 0.0021 * (k > 0.5 ? 1 : 1.8) * steady * (gasp > 0 ? 2.4 : 1) * (1 + sp * 2.5) * (1 - me.kneel * 0.35);
+    const rested = field && gun.bipod?.() && me.kneel < 0.2 && sp < 0.1 ? 0.14 : 1;   // seated, the bipod on the bench
+    const A = 0.0021 * (k > 0.5 ? 1 : 1.8) * steady * rested * (gasp > 0 ? 2.4 : 1) * (1 + sp * 2.5) * (1 - (field ? 0 : me.kneel * 0.35));
     const sYaw = A * (Math.sin(sec * 0.9) * 0.6 + Math.sin(sec * 2.3 + 1) * 0.3 + Math.sin(sec * 5.3) * 0.1);
     const sPitch = A * (Math.sin(sec * 1.27 + 0.5) * 0.6 + Math.sin(sec * 0.53) * 0.4) + (holding ? 0 : Math.sin(sec * 1.6) * A * 0.6);
     const rk = smooth(reloadK());
@@ -461,7 +588,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   }
 
   const eyeSpec: EyeSpec = {
-    fov: FOV, near: 0.02, far: 120,
+    fov: FOV, near: field ? 0.08 : 0.02, far: field ? 4500 : 120,
     pose(pos, quat) {
       shooterEye(eyePos, eyeQ);
       if (entering && !swapIn) {
@@ -478,6 +605,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
       scopeMat.uniforms.uRet.value = S.ring ? 0.45 * (scoped ? power : 1) : 1;
       const f = scoped ? scopeFov() : THREE.MathUtils.lerp(FOV, S.optic ? FOV_AIM : aimFov, smooth(aimK));
       if (Math.abs(cam.fov - f) > 0.01) { cam.fov = f; cam.updateProjectionMatrix(); }
+      scopeMat.uniforms.uMil.value = S.mil && scoped ? 0.001 / (2 * Math.tan(cam.fov / 2 * DEG)) : 0;
       handPose(cam);
       if (scopeQuad.visible) {                         // the picture rides on where the optic's axis points
         gun.root.updateMatrixWorld(true);
@@ -532,6 +660,7 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   };
 
   function clampPos(p: THREE.Vector3, prevZ: number) {
+    if (field) { p.x = clamp(p.x, L.lane - 9, L.lane + 9); p.z = clamp(p.z, L.line - 8.4, L.bench.z0 - 0.22); return; }
     p.x = clamp(p.x, L.X0 + 0.35, L.X1 - 0.35); p.z = clamp(p.z, L.Z0 + 0.35, L.bench.z0 - 0.22);
     const i = clamp(Math.round((p.x - L.lane) / L.laneW), -2, 2), cx = L.lane + i * L.laneW, lim = L.laneW / 2 - 0.34;
     if (p.z > L.boothZ - 0.3 && Math.abs(p.x - cx) > lim) {
@@ -588,14 +717,17 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     T.tick(sec);
     for (const t of T.list) if (t.state === 'up' && sec > t.until) T.drop(t, sec);
     if (phase === 'free') {
-      if (!standing().length && sec >= nextPop) { popOne('hostile', Infinity); nextPop = sec + 0.8; }
-      if (standing().length) nextPop = Math.max(nextPop, sec + 0.8);
+      if (!standing().length && sec >= nextPop) { popOne('hostile', Infinity); nextPop = sec + (field ? 1.6 : 0.8); }
+      if (standing().length) nextPop = Math.max(nextPop, sec + (field ? 1.6 : 0.8));
     } else if (phase === 'standby' && sec >= beepAt) {
       beep(); phase = 'live'; liveAt = lastShot = sec; nextPop = sec + 0.35; call('');
     } else if (phase === 'live') {
-      const el = sec - liveAt, prog = el / DRILL;
-      if (el >= DRILL) endDrill();
-      else {
+      const el = sec - liveAt, prog = el / drill;
+      if (el >= drill) endDrill();
+      else if (field) {                                       // one plate at a time, 20 s to hit it
+        if (!standing().length && sec >= nextPop) { popOne('hostile', sec + 20); nextPop = sec + 1.2; }
+        if (standing().length) nextPop = Math.max(nextPop, sec + 1.2);
+      } else {
         const up = standing(), max = prog < 0.3 ? 1 : prog < 0.65 ? 2 : 3;
         if (up.length < max && sec >= nextPop) {
           const ns = up.some(t => t.kind === 'hostile') && Math.random() < 0.2;
@@ -609,12 +741,17 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
 
     // lights: the house lights (or not), the status light over the backstop
     const lo = low(), hot = phase === 'live' || phase === 'standby';
-    hall.lamps.house.emissiveIntensity = lo ? 0.25 : 2.4;
+    if (field) {                                              // a gusting crosswind, shown by the flags
+      const w = windBase * (1 + 0.28 * Math.sin(sec * 0.13) + 0.14 * Math.sin(sec * 0.41 + 1.3));
+      windF.set(-w, 0.02, 0.4 * Math.sin(sec * 0.07));
+      field.tick(sec, windF);
+    }
+    hall.lamps.house.emissiveIntensity = field ? (lo ? 1.4 : 0) : lo ? 0.25 : 2.4;
     hall.lamps.flood.emissiveIntensity = lo ? 1.2 : 3.2;
     hall.lamps.exit.emissiveIntensity = 2.2;
     hall.lamps.hot.emissiveIntensity = hot ? 3.6 : 0.25;
     hall.lamps.cold.emissiveIntensity = hot ? 0.25 : 3;
-    fx.update(dt, wind);
+    fx.update(dt, field ? windF : wind);
   }
   const wind = new THREE.Vector3(0, 0.02, 0.06);              // the range's ventilation draws smoke downrange
 
@@ -627,9 +764,10 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     on = true; phase = 'setup'; entering = true; swapIn = !!c; leaving = null; entryT0 = sec = performance.now() / 1000;
     from.eye.copy(E.orbitCamera.position); from.eyeQ.copy(E.orbitCamera.quaternion);
     from.gun.copy(gun.root.position); from.gunQ.copy(gun.root.quaternion);
-    me.pos.set(L.lane, 0, L.bench.z0 - 0.24); me.yaw = 0; me.pitch = -0.05; me.vel.set(0, 0, 0); me.kneel = 0; me.kneelOn = false;
+    me.pos.set(L.lane, 0, L.bench.z0 - 0.24); me.yaw = 0; me.pitch = field ? 0.004 : -0.05; me.vel.set(0, 0, 0); me.kneel = 0; me.kneelOn = false;
     if (c) { me.pos.set(L.lane + c.x, 0, L.bench.z0 + c.z); clampPos(me.pos, me.pos.z); me.yaw = c.yaw; me.pitch = c.pitch; me.kneelOn = c.kneel; me.kneel = c.kneel ? 1 : 0; }
     aimK = 0; aimToggle = aimHeld = false; breath = 1; gasp = 0; Object.assign(kick, { rise: 0, vRise: 0, push: 0, vPush: 0, cam: 0 });
+    if (field) { windBase = (1.2 + Math.random() * 4) * (Math.random() < 0.5 ? -1 : 1); dial = 0; gun.turret?.set(0); }
     shots = []; shotN = 0; result = null; lastShot = sec; called = { seq: called.seq + 1, text: 'Load and make ready' };
     root.visible = true; T.reset();
     gun.hold(true, { ground: groundAt, flash: 14, cast, blast });
@@ -655,6 +793,8 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
   }
 
   const SKIP = new Set(['e', 'p', 'd', 'w', 'a', 's', 'f', 'r', 'z', 'x', 'c', 'q']);
+  /** a bolt gun with rounds left: R only works the bolt */
+  const boltOnly = () => { const s = gun.state(); return s.magIn && s.rounds > 0 && !s.chamber && !s.busy && !reload; };
   return {
     get on() { return on; },
     enter, exit, tick,
@@ -662,8 +802,16 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     keyDown(k: string, e: KeyboardEvent): boolean {
       if (!on) return false;
       if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Shift'].includes(k)) { keys.add(k); return true; }
+      const tu = gun.turret;
+      if (tu && (k === 'u' || k === 'j' || k === 'n')) {          // the elevation turret, a click at a time (held, it runs)
+        const was = dial;
+        dial = k === 'n' ? 0 : clamp(Math.round((dial + (k === 'u' ? tu.step : -tu.step)) / tu.step) * tu.step, 0, tu.max);
+        if (dial !== was) { tu.set(dial); snd.click(0, k === 'n' ? 0.7 : 1.6); }
+        return true;
+      }
       if (e.repeat) return SKIP.has(k) || k === 'space';
       if (k === 'f') { trigHeld = true; fire(); }
+      else if (k === 'r' && gun.bolt && boltOnly()) gun.rack();
       else if (k === 'r' || k === 'e') startReload();
       else if (k === 'z') aimToggle = !aimToggle;
       else if (k === 'x') { gun.safety(); const m = gun.state().mode; call(m ? m[0].toUpperCase() + m.slice(1) : gun.state().safe ? 'Safe' : 'Fire'); }
@@ -678,19 +826,21 @@ export function createRange(E: Engine, snd: Sound, gun: RangeGun, bench: BenchSp
     keyUp(k: string) { keys.delete(k); if (k === 'f') trigHeld = false; },
     blur() { keys.clear(); aimHeld = false; trigHeld = false; },
     /** the stage lights the hall from this while the range is on */
-    stage(): StageOverride | null { return on ? (low() ? LOW : BRIGHT) : null; },
+    stage(): StageOverride | null { return on ? field ? (low() ? FIELD_DUSK : FIELD_DAY) : low() ? LOW : BRIGHT : null; },
     hud(): RangeHud | null {
       if (!on) return null;
       const s = gun.state();
       return {
         kind: 'range', lane: L.mine, gun: gun.name, calibre: gun.calibre, phase, locked: captured || refused, lowLight: low(),
-        time: phase === 'live' ? Math.max(0, Math.ceil((DRILL - (sec - liveAt)) * 10) / 10) : DRILL, par: DRILL,
+        time: phase === 'live' ? Math.max(0, Math.ceil((drill - (sec - liveAt)) * 10) / 10) : drill, par: drill,
         score: stats.score, shots: stats.shots, hits: stats.hits, presented: stats.presented, noShoot: stats.noShoot,
         rounds: s.rounds, cap: s.cap, chamber: s.chamber, magIn: s.magIn, safe: s.safe, slideLocked: s.locked, reloading: !!reload,
         aiming: aimK > 0.5, mode: s.mode ?? null, power: scoped ? Math.round(power * 10) / 10 : null, breath: holding || gasp > 0 || breath < 1 ? Math.round(breath * 20) / 20 : null,
         shotsList: shots.slice(-8), hit, call: called, result,
         weapons: nav && WEAPONS.length > 1 ? WEAPONS.map((w, i) => ({ key: String(i + 1), name: w.name, on: w.id === nav.id })) : [],
         keys: gun.keys ?? [],
+        site,
+        dope: field ? { elev: Math.round(dial * 10) / 10, wind: Math.round(windF.x * -10) / 10, dist: T.list.find(t => t.state === 'up')?.dist ?? null } : null,
       };
     },
     /** waiting for the range to finish compiling before it goes on */

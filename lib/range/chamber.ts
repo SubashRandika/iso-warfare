@@ -10,7 +10,7 @@ import { decalMaterial, decalTexture } from '../real/decals';
 import { share } from '../real/textures';
 import type { BenchSpec } from './types';
 
-export type Surface = 'concrete' | 'fabric' | 'rubber' | 'steel' | 'wood' | 'paper';
+export type Surface = 'concrete' | 'fabric' | 'rubber' | 'steel' | 'wood' | 'paper' | 'dirt';
 
 /** where everything is, from the bench the weapon lies on (lib/real/bench.ts builds it from the same spec) */
 export function rangeLayout(b: BenchSpec) {

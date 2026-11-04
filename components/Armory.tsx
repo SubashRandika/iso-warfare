@@ -56,7 +56,7 @@ export default function Armory({ current, onPick, onClose }: { current: string; 
                 <h4>{c.name}<i>{models.length}</i></h4>
                 {models.map(m => (
                   <button key={m.id} className="armory-item" aria-current={m.id === current ? 'true' : undefined} onClick={() => onPick(m.id)}>
-                    <b className="stencil">{m.designation}</b>
+                    <b className="stencil" data-long={m.designation.length > 6 || undefined}>{m.designation}</b>
                     <span><em>{m.name}</em>{m.role}</span>
                   </button>
                 ))}

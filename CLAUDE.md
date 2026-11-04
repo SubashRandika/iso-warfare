@@ -21,7 +21,8 @@ lib/kit/        build (parts, hairlined meshes, hinges, primitives through a coo
                 displays), ordnance (missile bodies, seekers)
 lib/real/       the realistic render style (Line / Real switch, key H): stage (sky, sun, shadows, apron, fog, bloom,
                 material swap), materials (PBR library + triplanar skin), textures (procedural), plume (afterburner)
-lib/range/      the shooting range for small arms: hall, pop-up targets, gloved hands, controller, overlay state
+lib/range/      the shooting range for small arms: hall, pop-up targets, gloved hands, controller, overlay state;
+                field (the long-distance range outdoors: terrain, steel to 1000 m, wind flags) for precision rifles
 lib/stages/     apron (aircraft), plate (any ground plate: grid, optional ruler; small arms use a cm bench mat)
 lib/catalog/    categories (domains and shelves), types (ModelDef, three-free), index (the MODELS registry)
 lib/models/<category>/<id>/   def.ts (catalogue data) + model.ts (default export: ModelFactory)
@@ -58,7 +59,11 @@ model is its own chunk; three.js loads with the first model.
    `lib/models/rifles/m4a1/model.ts` (a detachable carry handle with the A2 rear sight, built as two arch walls either side
    of a sighting groove, since a solid handle stands above the sight line and blanks the aperture; ribbed carbine
    handguards, the A-frame front sight, and a permanent M203 whose barrel slides forward to load and whose grenade flies
-   ballistically, arms at 14 m and bursts through `RangeHold.cast`/`blast`)
+   ballistically, arms at 14 m and bursts through `RangeHold.cast`/`blast`),
+   `lib/models/sniper-rifles/mk22/model.ts` (a bolt action that lifts, runs back and ejects; a skeleton stock folding to
+   the right on an outboard hinge; a hollow handguard of thin walls so the barrel shows through its M-LOK slots; a
+   bipod whose inner legs telescope out on the range; a suppressor sliding onto the brake; a calibre change that swaps
+   barrel length, magazine, cartridge and ballistics; a 5–25× scope whose elevation cap turns with the range's turret)
    and `lib/models/fighters/` (large lofted airframes,
    hinged surfaces, gear, bays). Several models of one kind share a sim the way the fighters share `jet/sim.ts`.
 4. Check: `npx tsc --noEmit`, `npx next build`, then open `/?model=<id>` and run each action, the demo, both themes.
@@ -184,7 +189,8 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 ## The shooting range (small arms)
 
 - Key G on a small arm (Real view; it switches the style on by itself): the weapon leaves its bench for gloved hands
-  on lane 3 of an indoor range (`lib/range/`). The weapon supplies a `RangeGun` (`lib/range/types.ts`: sight line,
+  on lane 3 of an indoor range (`lib/range/`), or, for a precision rifle (`RangeGun.site: 'field'`), at the middle bench
+  of the long-distance range outdoors (below). The weapon supplies a `RangeGun` (`lib/range/types.ts`: sight line,
   muzzle, grip, recoil, trigger/magazine/rack/safety, and `hold(on, RangeHold)` so its cases and dropped magazines land
   on the floor or a counter, its flash lights the hall, and a projectile it flies itself can `cast(from, to)` against the
   hall and `blast(at, normal)` there: fire, a smoke cloud lifted clear of the target shield, scorch, boom, nearby targets
@@ -233,6 +239,26 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - The bullet goes along the sights (zeroed at 15 m) with a small spread, more from the hip and on the move; one ray per
   shot against the hall and target colliders (`userData.surface` / `userData.target`). Scoring A 5 · C 3 · D 1 ·
   no-shoot −10; the drill is 45 s after a random-delay shot-timer beep; the best score is kept per weapon.
+- The long-distance field (`lib/range/field.ts`, `site: 'field'`): a covered firing line on a concrete pad, a mown lane
+  over rolling grass rising to a backstop hill, tree lines (instanced), distance boards every 100 m, wind flags at 150,
+  450 and 750 m, and white steel plates hung on chains from 100 to 1000 m, each before its own berm with a distance
+  board (sized to read in the scope). The terrain is a height function on a graded grid (fine near the line), and bullets
+  meet it through `groundY` (the grid interpolated), not by raycasting its triangles. Plates are always hittable: a
+  strike leaves a lead splash on the canvas face and swings the plate; the called plate carries a lit orange marker
+  (`state 'up'` = called, so the drill's code serves both sites). The stage lights it with the real sky for the theme
+  (`StageOverride.time` 'day'/'dusk', `ground: false` hides the stage's concrete), and the eye camera's far plane is
+  4.5 km (near 8 cm: faces of plates and boards sit 1 cm proud of their backing with polygon offsets, or they fight it
+  in depth at 300 m and beyond).
+- On the field the round flies (`RangeGun.ballistics()`: muzzle velocity, drag k with dv/dx = −k·v, zero distance):
+  stepped every 4 ms with gravity and drag against the air moving with the wind, until it meets the ground, a plate or
+  a structure; the effects land after the time of flight and the steel's ring comes back at the speed of sound. The bore
+  is angled so the round crosses the line of sight at the zero (100 m), plus the turret (`RangeGun.turret`: U up, J
+  down, held keys repeat; N to zero). The wind is a gusting crosswind drawn on entry (the flags and the overlay's data
+  panel show it). The scope's `reticle: 'mil'` is a first-focal-plane milliradian grid (marks every mil, longer every
+  fifth, half-mil holdover marks, posts beyond ten), scaled from the scope's field of view. The spotter calls the plate,
+  then "Hit" or where a miss passed the called plate in mils. Seated at the bench (C stands), a deployed bipod
+  (`RangeGun.bipod()`) cuts the hold's wobble to a seventh; `bolt: true` makes R work the bolt while rounds remain.
+  Free practice works out along the line 100 m at a time; the drill (2 min) calls random plates, a point per 100 m.
 - Lighting: `RealSpec.stage()` hands the stage an indoor override (room environment, no sky, the sun overhead as the
   house lights, haze); light theme = house lights up, dark theme = low light (floods only, muzzle flash lights the room).
   Still no runtime lights: lamps are emissive meshes. The glow threshold sits above every lamp in the hall (only
@@ -255,7 +281,8 @@ the scene, sun shadows, a textured apron, bloom. Light theme = midday, dark them
 - Trace side profiles from a true side photo at a known scale (overall length ÷ pixels) and say so in a comment;
   draw the profiles back over the photo to check them (the M17 grip and slide came out 25–30 % too big by eye).
 - Keys: one letter per action, unique per model. Reserved by the host: I, T, M, H, Escape, [, ], /. On the range the
-  range takes W A S D, F, R, E, Z, X, C, P, Q, Space, Shift, the digits and the arrows while it is on (other model keys,
+  range takes W A S D, F, R, E, Z, X, C, P, Q, Space, Shift, the digits and the arrows while it is on (and U, J, N for a
+  weapon with a turret) (other model keys,
   such as the HK416's V magnifier and L laser and the M4A1's N and B, still work on the line).
   The catalogue warns in dev about clashes and unknown parts.
 - Demos must survive slow or throttled frames: chain steps with `script.when(cond, f)` (wait until the model has

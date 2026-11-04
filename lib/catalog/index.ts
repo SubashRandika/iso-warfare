@@ -13,8 +13,9 @@ import { m8 } from '../models/rifles/m8/def';
 import { ak47 } from '../models/rifles/ak47/def';
 import { hk416 } from '../models/rifles/hk416/def';
 import { m4a1 } from '../models/rifles/m4a1/def';
+import { mk22 } from '../models/sniper-rifles/mk22/def';
 
-export const MODELS: ModelDef[] = [f22, f35, su57, j20, b2, b52, m17, m8, ak47, hk416, m4a1];
+export const MODELS: ModelDef[] = [f22, f35, su57, j20, b2, b52, m17, m8, ak47, hk416, m4a1, mk22];
 
 export { CATEGORIES, DOMAINS };
 export const DEFAULT_MODEL = 'f22';
